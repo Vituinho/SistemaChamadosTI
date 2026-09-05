@@ -45,3 +45,11 @@ next-env.d.ts
 /givova-ti-frontend/.next/
 /givova-ti-frontend/out/
 /givova-ti-frontend/.env*
+!**/.env.example
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+*.db
+*.db-*
+.local/
