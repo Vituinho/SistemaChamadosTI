@@ -1,157 +1,41 @@
 "use client";
-
-import { FormEvent, useState } from "react";
-
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Send, ShieldCheck, Clock3, Paperclip } from "lucide-react";
+import { api, type Catalog, type Ticket } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 export default function Chamado() {
-  const [nome, setNome] = useState("");
-  const [setor, setSetor] = useState("");
-  const [localizacao, setLocalizacao] = useState("");
-  const [tipo, setTipo] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [prioridade, setPrioridade] = useState("");
-
+  const router = useRouter();
+  const [catalog, setCatalog] = useState<Catalog>();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  function load() { setError(""); void api<Catalog>("/catalog").then(setCatalog).catch(() => setError("Não foi possível conectar à central. Tente novamente.")); }
+  useEffect(() => { void api<Catalog>("/catalog").then(setCatalog).catch(() => setError("Não foi possível conectar à central. Tente novamente.")); }, []);
   async function enviarChamado(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const resposta = await fetch("http://127.0.0.1:5000/chamados", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        nome,
-        setor,
-        localizacao,
-        tipo,
-        descricao,
-        prioridade,
-      }),
-    });
-
-    const resultado = await resposta.json();
-
-    console.log(resultado);
-
-    alert(resultado.mensagem);
+    event.preventDefault(); setError(""); setBusy(true);
+    const data = new FormData(event.currentTarget);
+    const file = data.get("attachment");
+    if (file instanceof File && file.size > 5 * 1024 * 1024) { setError("A imagem deve ter até 5 MB."); setBusy(false); return; }
+    try {
+      const result = await api<Ticket & { access_key: string }>("/tickets", { method: "POST", body: data });
+      router.push(`/chamado/${result.protocol}#${result.access_key}`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível enviar o chamado."); setBusy(false); }
   }
-
-  return (
-    <main className="min-h-screen bg-slate-950 p-8 text-white">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-8">
-          <p className="text-sm text-blue-400">Givova TI</p>
-
-          <h1 className="text-3xl font-bold">Abrir chamado</h1>
-
-          <p className="mt-2 text-slate-400">
-            Informe os dados do problema para que a equipe de TI possa ajudar.
-          </p>
-        </div>
-
-        <form
-          onSubmit={enviarChamado}
-          className="space-y-6 rounded-xl border border-slate-800 bg-slate-900 p-6"
-        >
-          <div>
-            <label className="mb-2 block text-sm font-medium">Nome</label>
-
-            <input
-              type="text"
-              placeholder="Digite seu nome"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-medium">Setor</label>
-
-              <input
-                type="text"
-                placeholder="Ex: Financeiro"
-                value={setor}
-                onChange={(e) => setSetor(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium">
-                Localização
-              </label>
-
-              <input
-                type="text"
-                placeholder="Ex: Sala 02"
-                value={localizacao}
-                onChange={(e) => setLocalizacao(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Tipo do problema
-            </label>
-
-            <select
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-            >
-              <option value="">Selecione uma opção</option>
-              <option value="computador">Computador</option>
-              <option value="impressora">Impressora</option>
-              <option value="internet">Internet / Rede</option>
-              <option value="sistema">Sistema</option>
-              <option value="acesso">Acesso / Conta</option>
-              <option value="outro">Outro</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Descrição do problema
-            </label>
-
-            <textarea
-              rows={5}
-              placeholder="Explique o que está acontecendo..."
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Prioridade
-            </label>
-
-            <select
-              value={prioridade}
-              onChange={(e) => setPrioridade(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-            >
-              <option value="">Selecione a prioridade</option>
-              <option value="baixa">Baixa</option>
-              <option value="media">Média</option>
-              <option value="alta">Alta</option>
-              <option value="urgente">Urgente</option>
-            </select>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-blue-600 px-5 py-3 font-semibold transition hover:bg-blue-500"
-          >
-            Abrir chamado
-          </button>
-        </form>
-      </div>
-    </main>
-  );
+  return <main className="mx-auto grid max-w-6xl gap-10 px-5 py-10 lg:grid-cols-[.8fr_1.2fr] lg:py-16">
+    <section><p className="mb-4 text-xs font-bold tracking-[.18em] text-orange-700">ESTAMOS AQUI PARA AJUDAR</p><h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl">Um problema?<br /><span className="text-orange-600">Chame a TI.</span></h1><p className="mt-5 max-w-sm leading-7 text-slate-600">Conte o que aconteceu. Nossa equipe recebe seu chamado e você acompanha o atendimento por aqui.</p>
+      <div className="mt-10 space-y-6"><div className="flex gap-3"><Clock3 className="shrink-0 text-orange-600" /><div><h2 className="font-semibold">Acompanhe cada etapa</h2><p className="mt-1 text-sm text-slate-500">Saiba quando a TI assumir e resolver seu chamado.</p></div></div><div className="flex gap-3"><ShieldCheck className="shrink-0 text-orange-600" /><div><h2 className="font-semibold">Simples e direto</h2><p className="mt-1 text-sm text-slate-500">Sem cadastro. Guarde o link após enviar.</p></div></div></div>
+    </section>
+    <section className="card shadow-sm"><h2 className="text-xl font-bold">Abrir chamado</h2><p className="mb-6 mt-1 text-sm text-slate-500">Preencha os campos abaixo. Apenas o anexo é opcional.</p>
+      {error && <div role="alert" className="error mb-4">{error} {!catalog && <Button type="button" variant="outline" onClick={load}>Tentar novamente</Button>}</div>}
+      {!catalog ? <p role="status" className="py-10 text-slate-500">Carregando formulário…</p> : <form onSubmit={enviarChamado} className="space-y-5">
+        <label>Seu nome<input name="name" autoComplete="name" required minLength={2} maxLength={120} placeholder="Como você se chama?" /></label>
+        <label>Setor<select name="department" required defaultValue=""><option value="" disabled>Selecione seu setor</option>{catalog.departments.map(d => <option key={d}>{d}</option>)}</select></label>
+        <label>Categoria do problema<select name="category" required defaultValue=""><option value="" disabled>Com o que precisa de ajuda?</option>{catalog.categories.map(c => <option key={c}>{c}</option>)}</select></label>
+        <label>Resumo do problema<input name="title" required minLength={3} maxLength={160} placeholder="Ex.: impressora não imprime" /></label>
+        <label>Descrição<textarea name="description" rows={4} required minLength={5} maxLength={5000} placeholder="O que está acontecendo? Desde quando?" /></label>
+        <label className="rounded-lg border border-dashed border-slate-300 p-4"><span className="flex items-center gap-2"><Paperclip size={16} /> Imagem ou print <span className="font-normal text-slate-500">(opcional)</span></span><input name="attachment" type="file" accept="image/png,image/jpeg,image/webp" className="mt-3 block w-full text-sm font-normal" /><span className="mt-2 block text-xs font-normal text-slate-500">PNG, JPG ou WEBP · até 5 MB. Não inclua senhas.</span></label>
+        <Button disabled={busy} className="w-full" type="submit"><Send />{busy ? "Enviando chamado…" : "Chamar TI"}</Button>
+      </form>}
+    </section>
+  </main>;
 }
