@@ -1,4 +1,4 @@
-DEPARTMENTS = ["Faturamento", "Financeiro", "Logística", "Monitoramento"]
+DEPARTMENTS = ["Faturamento", "Financeiro", "Logística", "Juridico", "Departamento Pessoal", "Monitoramento"]
 CATEGORIES = ["Computador", "Internet", "Impressora", "Sistema", "E-mail", "Acesso / Senha", "WhatsApp", "Telefone / Celular", "Equipamento", "Outro"]
 STATUSES = ["NOVO", "EM_ATENDIMENTO", "AGUARDANDO_USUARIO", "AGUARDANDO_TERCEIRO", "RESOLVIDO", "CANCELADO"]
 PRIORITIES = ["BAIXA", "NORMAL", "ALTA", "URGENTE"]

@@ -2,7 +2,7 @@
 
 ## Ajuste posterior solicitado
 
-Setores limitados a Faturamento, Financeiro, Logística e Monitoramento. Localização removida do formulário, listagem, detalhes, contrato da API e model. A migration `0002_remove_location.py` foi aplicada no PostgreSQL local, removendo somente a coluna de localização; chamados e históricos foram mantidos. Cadastros antigos conservam seu setor original, sem reclassificação arbitrária. Os 29 testes, lint, TypeScript e build passaram novamente após o ajuste.
+Setores limitados a Faturamento, Financeiro, Logística, Juridico, Departamento Pessoal e Monitoramento. Localização removida do formulário, listagem, detalhes, contrato da API e model. A migration `0002_remove_location.py` foi aplicada no PostgreSQL local, removendo somente a coluna de localização; chamados e históricos foram mantidos. Cadastros antigos conservam seu setor original, sem reclassificação arbitrária. Os 29 testes, lint, TypeScript e build passaram novamente após o ajuste.
 
 ## Resultado
 

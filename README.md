@@ -96,7 +96,7 @@ Use `localhost` nos dois serviços. Misturar `127.0.0.1` e `localhost` no navega
 
 ## Como usar
 
-1. Colaborador abre `/` ou `/chamado`, informa identificação, setor, categoria, resumo e descrição. Pode anexar uma imagem. Os setores disponíveis são Faturamento, Financeiro, Logística e Monitoramento; não há campo de localização.
+1. Colaborador abre `/` ou `/chamado`, informa identificação, setor, categoria, resumo e descrição. Pode anexar uma imagem. Os setores disponíveis são Faturamento, Financeiro, Logística, Departamento Pessoal, Juridico e Monitoramento; não há campo de localização.
 2. Ao enviar, recebe protocolo `GV-000001` e link de acompanhamento. Guarde o endereço **completo**, incluindo o fragmento após `#`. A chave não é enviada na URL ao servidor; as consultas usam um cabeçalho privado.
 3. Técnico abre `/ti`, faz login e recebe novos chamados automaticamente. `/painel` redireciona para `/ti`.
 4. Filtra/busca na fila, abre detalhes e confirma **Assumir chamado**. O responsável e o horário ficam registrados.
