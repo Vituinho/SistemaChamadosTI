@@ -96,12 +96,16 @@ Use `localhost` nos dois serviços. Misturar `127.0.0.1` e `localhost` no navega
 
 ## Como usar
 
-1. Colaborador abre `/` ou `/chamado`, informa identificação, setor, categoria, resumo e descrição. Pode anexar uma imagem. Os setores disponíveis são Faturamento, Financeiro, Logística, Departamento Pessoal, Juridico e Monitoramento; não há campo de localização.
+1. Colaborador abre `/` ou `/chamado`, digita seu nome e escolhe o setor e o tipo de problema nos botões grandes. Pode clicar em uma sugestão para preencher o resumo ou escrever uma frase curta. **Descrição e imagem são opcionais** e ficam em “Quer acrescentar algo?”. Os setores disponíveis são Faturamento, Financeiro, Logística, Juridico, Departamento Pessoal e Monitoramento; não há campo de localização.
 2. Ao enviar, recebe protocolo `GV-000001` e link de acompanhamento. Guarde o endereço **completo**, incluindo o fragmento após `#`. A chave não é enviada na URL ao servidor; as consultas usam um cabeçalho privado.
 3. Técnico abre `/ti`, faz login e recebe novos chamados automaticamente. `/painel` redireciona para `/ti`.
 4. Filtra/busca na fila, abre detalhes e confirma **Assumir chamado**. O responsável e o horário ficam registrados.
 5. Ajusta prioridade/status, escreve a solução e confirma **Resolver chamado**.
 6. O colaborador vê o andamento automaticamente. Histórico e solução ficam persistidos.
+
+O acompanhamento mostra as etapas Recebido → Em atendimento → Resolvido, com instruções simples. Detalhes e histórico podem ser expandidos quando necessário. Descrição omitida, vazia ou `null` na API é salva como texto vazio; o limite continua sendo 5000 caracteres quando informada. O resumo continua obrigatório, mas as sugestões evitam digitação desnecessária.
+
+Neste ambiente local foi criada a conta `ti`, com senha aleatória entregue ao responsável fora do repositório. A senha fica armazenada no banco somente como hash Argon2. Não há credencial padrão para novas instalações.
 
 O link de acompanhamento é uma credencial de acesso ao próprio chamado. Não há recuperação pública pelo protocolo, para evitar expor dados pessoais. Se perder o link, procure a TI.
 

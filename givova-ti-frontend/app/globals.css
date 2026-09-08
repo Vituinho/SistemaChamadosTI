@@ -4,7 +4,7 @@
 body { background: var(--background); color: var(--foreground); font-family: Arial, Helvetica, sans-serif; }
 button, a, select { -webkit-tap-highlight-color: transparent; }
 button:not(:disabled), select { cursor: pointer; }
-input:not([type=file]), select, textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; background: white; font-size: 16px; }
+input:not([type=file]):not([type=radio]):not([type=checkbox]), select, textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; background: white; font-size: 16px; }
 input:focus, select:focus, textarea:focus { outline: 2px solid #ea580c; outline-offset: 2px; }
 label { display: block; font-size: 14px; font-weight: 600; }
 label > input, label > select, label > textarea { margin-top: 8px; }

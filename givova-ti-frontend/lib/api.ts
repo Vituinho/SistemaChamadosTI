@@ -12,7 +12,13 @@ export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API}${path}`, { ...init, credentials: "include", cache: "no-store" });
+  let response: Response;
+  try {
+    response = await fetch(`${API}${path}`, { ...init, signal: init.signal ?? AbortSignal.timeout(20000), credentials: "include", cache: "no-store" });
+  } catch (error) {
+    if (init.signal?.aborted) throw error;
+    throw new ApiError("Não conseguimos falar com a TI agora. Confira sua conexão e tente novamente. Seus campos continuam preenchidos.", 0);
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new ApiError(typeof body.detail === "string" ? body.detail : "Não foi possível concluir. Tente novamente.", response.status);

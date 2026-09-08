@@ -1,5 +1,16 @@
 # Relatório de entrega — Givova TI
 
+## Facilidade de uso e correções — 08/09/2026
+
+- Formulário em duas partes, com botões grandes para setor/categoria, ícones, opção “Outro / Não sei” e sugestões que preenchem o resumo com um clique.
+- Descrição e imagem opcionais em área expansível. API aceita descrição omitida, vazia ou nula, normalizando para texto vazio sem alterar o schema do banco.
+- Acompanhamento com três etapas, mensagens simples, solução em destaque e histórico expansível. Identificadores técnicos de status são apresentados em linguagem comum.
+- Corrigido teste cuja ordem dos setores diferia do catálogo, incluindo os setores Jurídico e Departamento Pessoal adicionados posteriormente.
+- Corrigido carregamento que podia ficar preso ao clicar novamente no chamado já aberto. Falha na notificação nativa não interrompe mais a atualização da fila; erros de conexão têm mensagem em português e tempo limite.
+- Conta local `ti` criada com senha aleatória, armazenada somente como hash no banco. Credenciais não estão no Git.
+- Validação: 35 testes passaram no PostgreSQL, migrations sem divergências, ESLint e TypeScript sem erros, build aprovado. Fluxo real executado com a conta TI: abertura sem descrição/anexo, sugestão de resumo, atribuição e resolução de chamado fictício. Console do painel sem erros durante o teste.
+- Inspeção em largura de 390px confirmou formulário sem rolagem horizontal. A homologação em aparelhos físicos continua recomendada antes de disponibilizar na empresa.
+
 ## Ajuste posterior solicitado
 
 Setores limitados a Faturamento, Financeiro, Logística, Juridico, Departamento Pessoal e Monitoramento. Localização removida do formulário, listagem, detalhes, contrato da API e model. A migration `0002_remove_location.py` foi aplicada no PostgreSQL local, removendo somente a coluna de localização; chamados e históricos foram mantidos. Cadastros antigos conservam seu setor original, sem reclassificação arbitrária. Os 29 testes, lint, TypeScript e build passaram novamente após o ajuste.
@@ -68,7 +79,7 @@ Foi preparado PostgreSQL 18.4 portátil em `.local/pgdata`, somente em `127.0.0.
 | `python -m compileall -q backend/app` | Passou |
 | Import da aplicação FastAPI | Passou |
 | `GET /health` com Uvicorn real | 200, banco acessível |
-| pytest final contra PostgreSQL | **29 testes passaram** |
+| pytest atual contra PostgreSQL | **35 testes passaram** |
 | Migrations ida/volta em schema isolado | Passou |
 | Fluxo real no navegador | Passou |
 | Notificação interna ao criar chamado em outra aba | Confirmada sem recarregar |
@@ -118,7 +129,7 @@ Foi usado um técnico temporário apenas para o teste de navegador. Ao finalizar
 
 ## Limitações de validação e próximos passos externos
 
-- A estrutura responsiva está implementada, mas a ferramenta de navegador manteve viewport de 1280px mesmo após solicitar 390px. Não foi possível concluir inspeção visual em celular/tablet nesta sessão; faça essa homologação em dispositivos reais.
+- A inspeção de 390px foi concluída em 08/09/2026; ainda falta a homologação em celulares e tablets físicos da empresa.
 - Notificação interna foi comprovada. O prompt de permissão/notificação nativa do sistema operacional não foi exercitado; depende do navegador, HTTPS/localhost e permissão do usuário.
 - Publicação na rede, domínio, HTTPS, backup operacional e contas reais da TI dependem das configurações da empresa. Não houve deploy ou alteração de produção.
 - Recuperação de senha, reabertura e administração de catálogos pela interface não fazem parte desta V1. As limitações e comandos estão no README.
