@@ -1,5 +1,14 @@
 # Relatório de entrega — Givova TI
 
+## Alertas e aviso de chegada da TI — 08/09/2026
+
+- Aviso fixo de novo chamado com nome, setor, resumo e acesso direto, independente dos filtros ou da página atual da fila. Em uma sequência de pedidos, destaca o mais recente; todos permanecem na fila.
+- Som opcional ativado por clique, com teste e silenciamento. Notificação do navegador inclui o pedido e abre seus detalhes ao clicar, quando a plataforma permite. O painel deve permanecer aberto; o som deve ser reativado após recarregar.
+- A ação de assumir informa à TI que o colaborador verá “A TI está indo até você!”. O acompanhamento mostra a mensagem em destaque automaticamente enquanto o status for Em atendimento, usando o fluxo de eventos existente, sem migration.
+- Teste em duas abas: novo pedido fictício apareceu no alerta mesmo com a fila filtrada em Resolvido, e o botão abriu os detalhes corretos. O navegador embutido liberou o áudio, mas não concedeu notificações nativas; a exibição no sistema operacional e a audibilidade física não foram confirmadas.
+- Validação final com a versão compilada: ao confirmar Assumir, o acompanhamento exibiu “A TI está indo até você!” sem recarregar. Aviso e acompanhamento inspecionados em tela estreita; console sem erros no fluxo final. ESLint, TypeScript e build passaram.
+- Frontend local atualizado para `npm run start -- --hostname 127.0.0.1 --port 3000`, servindo o build aprovado em `http://localhost:3000`. API e PostgreSQL mantidos nas portas 8000 e 55432. Para futuras alterações, gere outro build e reinicie o frontend, ou retome o modo dev.
+
 ## Facilidade de uso e correções — 08/09/2026
 
 - Formulário em duas partes, com botões grandes para setor/categoria, ícones, opção “Outro / Não sei” e sugestões que preenchem o resumo com um clique.
