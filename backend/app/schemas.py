@@ -15,7 +15,12 @@ class TicketCreate(CleanModel):
     department: str = Field(max_length=80)
     category: str = Field(max_length=80)
     title: str = Field(min_length=3, max_length=160)
-    description: str = Field(min_length=5, max_length=5000)
+    description: str = Field(default="", max_length=5000)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def optional_description(cls, value):
+        return "" if value is None else value
 
     @field_validator("department")
     @classmethod

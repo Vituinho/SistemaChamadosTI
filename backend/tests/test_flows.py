@@ -13,7 +13,7 @@ from app.security import digest
 
 def test_health_and_catalog(client):
     assert client.get("/health").json()["status"] == "ok"
-    assert client.get("/departments").json() == ["Faturamento", "Financeiro", "Logística", "Departamento Pessoal", "Juridico", "Monitoramento"]
+    assert client.get("/departments").json() == ["Faturamento", "Financeiro", "Logística", "Juridico", "Departamento Pessoal", "Monitoramento"]
     assert len(client.get("/catalog").json()["categories"]) == 10
 
 
@@ -36,6 +36,27 @@ def test_create_and_private_tracking(client, payload):
 @pytest.mark.parametrize("change", [{"name": " "}, {"title": "x"}, {"department": "invalid"}, {"category": "invalid"}, {"priority": "URGENTE"}, {"description": "a" * 5001}, {"department": "Administrativo"}])
 def test_validation(client, payload, change):
     assert client.post("/tickets", json={**payload, **change}).status_code == 422
+
+
+@pytest.mark.parametrize("value", [None, "", "   ", "x"])
+def test_optional_description(client, payload, value):
+    response = client.post("/tickets", json={**payload, "description": value})
+    assert response.status_code == 201
+    assert response.json()["description"] == (value or "").strip()
+
+
+@pytest.mark.parametrize("multipart", [False, True])
+def test_omitted_description(client, payload, multipart):
+    payload.pop("description")
+    if multipart:
+        response = client.post("/tickets", files={key: (None, value) for key, value in payload.items()})
+    else:
+        response = client.post("/tickets", json=payload)
+    assert response.status_code == 201
+    ticket = response.json()
+    assert ticket["description"] == ""
+    tracked = client.get("/tracking/" + ticket["protocol"], headers={"X-Ticket-Key": ticket["access_key"]})
+    assert tracked.status_code == 200 and tracked.json()["description"] == ""
 
 
 @pytest.mark.parametrize("path", ["/tickets", "/tickets/1", "/tickets/1/history", "/tickets/1/attachment", "/dashboard", "/events", "/auth/me"])
