@@ -1,6 +1,7 @@
 import asyncio
 import io
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 import pytest
 from PIL import Image
@@ -169,6 +170,67 @@ def test_timezone_preserves_instant():
     from datetime import datetime, timedelta, timezone
     value = datetime(2026, 9, 5, 8, 0, tzinfo=timezone(timedelta(hours=-3)))
     assert main.stamp(value) == "2026-09-05T11:00:00+00:00"
+
+
+def test_sse_slow_database_does_not_block_event_loop(monkeypatch):
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_revision(*args):
+        started.set()
+        if not release.wait(timeout=3):
+            raise AssertionError("A consulta de eventos bloqueou o loop da API")
+        return 7
+
+    monkeypatch.setattr(main, "event_revision", slow_revision)
+
+    class Request:
+        async def is_disconnected(self):
+            return False
+
+    async def run():
+        stream = main.event_stream(Request())
+        pending = asyncio.create_task(anext(stream))
+        try:
+            assert await asyncio.to_thread(started.wait, 2)
+            # Other request coroutines must run while the database is waiting.
+            await asyncio.sleep(0)
+            release.set()
+            assert '"revision": 7' in await pending
+        finally:
+            release.set()
+            await stream.aclose()
+
+    asyncio.run(run())
+
+
+def test_sse_expired_session_closes_database_before_yield(db_factory, monkeypatch):
+    active = []
+
+    class TrackedSession:
+        def __enter__(self):
+            active.append(True)
+            self.db = db_factory()
+            return self.db
+
+        def __exit__(self, *args):
+            self.db.close()
+            active.pop()
+
+    monkeypatch.setattr(main, "SessionLocal", TrackedSession)
+
+    class Request:
+        async def is_disconnected(self):
+            return False
+
+    async def run():
+        stream = main.event_stream(Request(), session_hash="expired-or-revoked")
+        assert "event: expired" in await anext(stream)
+        assert not active
+        with pytest.raises(StopAsyncIteration):
+            await anext(stream)
+
+    asyncio.run(run())
 
 
 @pytest.mark.skipif(not os.environ.get("TEST_DATABASE_URL"), reason="Requires PostgreSQL row locks")

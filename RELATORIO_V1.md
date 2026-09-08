@@ -1,5 +1,13 @@
 # Relatório de entrega — Givova TI
 
+## Carregamento do painel com banco remoto lento — 08/09/2026
+
+- Confirmado pelo acompanhamento publicado que GV-000001 existe e aguarda a TI. O painel informado pelo usuário permanecia em “Carregando chamados…”, com indicadores sem valores.
+- Serializadas as atualizações da fila: uma requisição lenta pode terminar antes da próxima consulta. Eventos e mudanças de filtros pendentes são reunidos em uma única atualização com os filtros mais recentes. Isso evita descartar continuamente respostas e erros quando o tempo de resposta supera o intervalo de atualização.
+- Consultas síncronas do SSE movidas para uma thread de trabalho. A espera pelo PostgreSQL deixa de bloquear o loop de eventos da API. A conexão também é liberada antes de emitir o evento de sessão expirada.
+- Regressões adicionadas para resposta lenta, filtros pendentes, cancelamento ao sair, recuperação após erro, banco lento durante SSE e liberação da sessão expirada. O chamado real não foi alterado.
+- Validação local: 37 testes passaram no PostgreSQL, 3 testes de atualização do frontend passaram, ESLint/TypeScript/build aprovados. Permanecem os dois avisos de depreciação das bibliotecas de teste já documentados. A validação autenticada do painel em produção depende do deploy e da sessão do usuário.
+
 ## Alertas e aviso de chegada da TI — 08/09/2026
 
 - Aviso fixo de novo chamado com nome, setor, resumo e acesso direto, independente dos filtros ou da página atual da fila. Em uma sequência de pedidos, destaca o mais recente; todos permanecem na fila.

@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from sqlalchemy import select, func, text, delete
 from sqlalchemy.orm import Session as DBSession
 from starlette.datastructures import UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from .catalog import DEPARTMENTS, CATEGORIES, STATUSES, PRIORITIES, TRANSITIONS
 from .config import settings
@@ -328,20 +329,27 @@ def public_attachment(protocol: str, request: Request, db: DBSession = Depends(g
     return image_response(db, ticket.id)
 
 
+def event_revision(session_hash=None, ticket_id=None):
+    # SQLAlchemy uses synchronous I/O; open and close the session in the worker.
+    with SessionLocal() as db:
+        if session_hash:
+            session = db.get(Session, session_hash)
+            if not session or utc(session.expires_at) <= now():
+                return None
+        stmt = select(func.max(TicketHistory.id))
+        if ticket_id:
+            stmt = stmt.where(TicketHistory.ticket_id == ticket_id)
+        return db.scalar(stmt) or 0
+
+
 async def event_stream(request, session_hash=None, ticket_id=None):
     previous = None
     # Each poll opens a short DB session, so streams never occupy a pool connection.
     while not await request.is_disconnected():
-        with SessionLocal() as db:
-            if session_hash:
-                session = db.get(Session, session_hash)
-                if not session or utc(session.expires_at) <= now():
-                    yield 'event: expired\ndata: {}\n\n'
-                    return
-            stmt = select(func.max(TicketHistory.id))
-            if ticket_id:
-                stmt = stmt.where(TicketHistory.ticket_id == ticket_id)
-            revision = db.scalar(stmt) or 0
+        revision = await run_in_threadpool(event_revision, session_hash, ticket_id)
+        if revision is None:
+            yield 'event: expired\ndata: {}\n\n'
+            return
         if revision != previous:
             yield f'event: update\ndata: {json.dumps({"revision": revision})}\n\n'
             previous = revision

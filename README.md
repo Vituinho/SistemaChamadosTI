@@ -152,6 +152,7 @@ Frontend, dentro de `givova-ti-frontend`:
 
 ```powershell
 npm run lint
+npm test
 npx tsc --noEmit
 npm run build
 npm start

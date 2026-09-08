@@ -5,6 +5,7 @@ import { api, ApiError, json, labels, date, age, subscribe, type Catalog, type D
 import { Button } from "@/components/ui/button";
 import { Badge, TicketDetails } from "@/components/ticket-details";
 import { NotificationSound } from "@/lib/notification-sound";
+import { RefreshQueue } from "@/lib/refresh-queue";
 
 type User = { id: number; name: string };
 export default function TI() {
@@ -52,6 +53,7 @@ function Panel({ user, onLogout }: { user: User; onLogout: () => void }) {
   const desktopNotification = useRef<Notification | null>(null);
   const latest = useRef<number | null>(null);
   const sequence = useRef(0);
+  const refreshQueue = useRef(new RefreshQueue());
   const detailsRef = useRef<HTMLElement>(null);
   const openTicket = useCallback((id: number) => {
     setSelected(current => current?.id === id ? current : undefined);
@@ -63,6 +65,7 @@ function Panel({ user, onLogout }: { user: User; onLogout: () => void }) {
   useEffect(() => () => {
     sound.current?.dispose();
     desktopNotification.current?.close();
+    refreshQueue.current.cancelPending();
     sequence.current++;
   }, []);
   useEffect(() => { if (selectedId !== undefined) detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [selectedId]);
@@ -70,7 +73,9 @@ function Panel({ user, onLogout }: { user: User; onLogout: () => void }) {
     if (e instanceof ApiError && e.status === 401) onLogout();
     else setError(e instanceof Error ? e.message : "Não foi possível carregar os chamados.");
   }, [onLogout]);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(() => refreshQueue.current.run(async () => {
+    // A slow response must finish before polling starts another request.
+    // Collapse events/filter changes into one follow-up using the latest filters.
     const requestId = ++sequence.current;
     try {
       const query = new URLSearchParams({ offset: String(offset), limit: "30" });
@@ -99,7 +104,7 @@ function Panel({ user, onLogout }: { user: User; onLogout: () => void }) {
       latest.current = dash.latest_id;
       setDashboard(dash); setTickets(list.items); setTotal(list.total); setCatalog(cat); setLoaded(true); setError("");
     } catch (e) { if (requestId === sequence.current) handleError(e); }
-  }, [filters, offset, handleError, openTicket]);
+  }), [filters, offset, handleError, openTicket]);
   // Keep one stream connected while filters change; updates use the latest refresh.
   const refreshRef = useRef(refresh);
   useEffect(() => { refreshRef.current = refresh; const delay = setTimeout(() => void refresh(), 200); return () => clearTimeout(delay); }, [refresh]);
