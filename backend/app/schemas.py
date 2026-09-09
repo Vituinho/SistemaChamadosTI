@@ -52,3 +52,17 @@ class Login(CleanModel):
 
     # Preserve spaces in passwords; only names and ticket text are trimmed.
     model_config = ConfigDict(extra="forbid")
+
+
+class PushKeys(CleanModel):
+    p256dh: str = Field(min_length=40, max_length=256)
+    auth: str = Field(min_length=8, max_length=128)
+
+
+class PushSubscriptionData(CleanModel):
+    endpoint: str = Field(min_length=20, max_length=2048, pattern=r"^https://")
+    keys: PushKeys
+
+
+class PushEndpoint(CleanModel):
+    endpoint: str = Field(min_length=20, max_length=2048, pattern=r"^https://")

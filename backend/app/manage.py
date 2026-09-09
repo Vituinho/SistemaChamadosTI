@@ -2,7 +2,10 @@
 import argparse
 import getpass
 import secrets
+import base64
 from sqlalchemy import select
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from py_vapid import Vapid01
 from .database import SessionLocal
 from .models import Technician, Ticket, TicketHistory
 from .security import passwords, digest
@@ -11,8 +14,18 @@ from .catalog import DEPARTMENTS, CATEGORIES
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["create-user", "seed"])
+    parser.add_argument("command", choices=["create-user", "seed", "generate-vapid"])
     args = parser.parse_args()
+    if args.command == "generate-vapid":
+        vapid = Vapid01()
+        vapid.generate_keys()
+        private_value = vapid.private_key.private_numbers().private_value.to_bytes(32, "big")
+        public_value = vapid.public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+        encode = lambda value: base64.urlsafe_b64encode(value).rstrip(b"=").decode()
+        print("VAPID_PRIVATE_KEY=" + encode(private_value))
+        print("VAPID_PUBLIC_KEY=" + encode(public_value))
+        print("Guarde a chave privada somente no Render. Gere o par apenas uma vez.")
+        return
     with SessionLocal() as db:
         if args.command == "create-user":
             username = input("Usuário: ").strip().lower()

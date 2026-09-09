@@ -140,7 +140,7 @@ O README explica instalação do zero, banco convencional, `.venv`, migrations, 
 
 ## Credenciais e configurações
 
-Configure `DATABASE_URL`, `ALLOWED_ORIGINS`, `COOKIE_SECURE`, `SESSION_HOURS`, `TIMEZONE` e `NEXT_PUBLIC_API_URL`. Não existe usuário/senha administrativo padrão: crie seu técnico com `python -m app.manage create-user`.
+Configure `DATABASE_URL`, `ALLOWED_ORIGINS`, `COOKIE_SECURE`, `SESSION_HOURS`, `TIMEZONE` e `NEXT_PUBLIC_API_URL`. Para as notificações do computador, configure também `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT`; gere o par com `python -m app.manage generate-vapid`. Não existe usuário/senha administrativo padrão: crie seu técnico com `python -m app.manage create-user`.
 
 Foi usado um técnico temporário apenas para o teste de navegador. Ao finalizar, suas sessões foram revogadas e a senha foi substituída por valor aleatório descartado. O registro permanece somente para preservar o responsável do chamado fictício resolvido. Não use essa conta; crie sua própria conta pelo comando acima.
 

@@ -27,6 +27,16 @@ class Session(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    technician_id: Mapped[int] = mapped_column(ForeignKey("technicians.id", ondelete="CASCADE"), index=True)
+    endpoint: Mapped[str] = mapped_column(String(2048), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(256))
+    auth: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
     __table_args__ = (

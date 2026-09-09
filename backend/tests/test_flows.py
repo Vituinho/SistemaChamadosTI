@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -8,7 +9,8 @@ from PIL import Image
 from sqlalchemy import select
 from fastapi import HTTPException
 from app import main
-from app.models import Ticket, Technician, Session, now
+from app import push_notifications
+from app.models import PushSubscription, Ticket, Technician, Session, now
 from app.security import digest
 
 
@@ -121,6 +123,58 @@ def test_auth_logout_csrf_and_expiry(client, db_factory):
         session.expires_at = now()
         db.commit()
     assert client.get("/auth/me").status_code == 401
+
+
+def test_computer_push_subscription_requires_login_and_configuration(client, db_factory, monkeypatch):
+    payload = {
+        "endpoint": "https://push.example.test/subscriptions/device-1",
+        "keys": {"p256dh": "p" * 65, "auth": "a" * 16},
+    }
+    assert client.get("/push/config").status_code == 401
+    assert client.post("/push/subscribe", json=payload).status_code == 401
+    assert client.post("/auth/login", json={"username": "test-tech", "password": "test-password-only"}).status_code == 200
+    assert client.post("/push/subscribe", json=payload).status_code == 503
+
+    monkeypatch.setattr(main.settings, "vapid_public_key", "public-test-key")
+    monkeypatch.setattr(main.settings, "vapid_private_key", "private-test-key")
+    monkeypatch.setattr(main.settings, "vapid_subject", "https://example.test")
+    assert client.get("/push/config").json() == {"enabled": True, "public_key": "public-test-key"}
+    assert client.post("/push/subscribe", json=payload).json() == {"ok": True}
+    assert client.post("/push/subscribe", json={**payload, "keys": {"p256dh": "q" * 65, "auth": "b" * 16}}).status_code == 200
+    with db_factory() as db:
+        subscriptions = db.scalars(select(PushSubscription)).all()
+        assert len(subscriptions) == 1
+        assert subscriptions[0].p256dh == "q" * 65
+    sent_to = []
+    monkeypatch.setattr(main, "send_test_notification", lambda technician_id: sent_to.append(technician_id))
+    assert client.post("/push/test").json() == {"ok": True}
+    assert sent_to == [client.get("/auth/me").json()["id"]]
+    assert client.post("/push/unsubscribe", json={"endpoint": payload["endpoint"]}).json() == {"ok": True}
+    with db_factory() as db:
+        assert db.scalar(select(PushSubscription)) is None
+
+
+def test_new_ticket_sends_computer_push_after_commit(logged, payload, db_factory, monkeypatch):
+    subscription = {
+        "endpoint": "https://push.example.test/subscriptions/device-2",
+        "keys": {"p256dh": "p" * 65, "auth": "a" * 16},
+    }
+    monkeypatch.setattr(main.settings, "vapid_public_key", "public-test-key")
+    monkeypatch.setattr(main.settings, "vapid_private_key", "private-test-key")
+    monkeypatch.setattr(main.settings, "vapid_subject", "https://example.test")
+    monkeypatch.setattr(push_notifications, "SessionLocal", db_factory)
+    sent = []
+    monkeypatch.setattr(push_notifications, "webpush", lambda **kwargs: sent.append(kwargs))
+    assert logged.post("/push/subscribe", json=subscription).status_code == 200
+
+    ticket = logged.post("/tickets", json=payload).json()
+
+    assert len(sent) == 1
+    message = json.loads(sent[0]["data"])
+    assert message["title"] == "Novo chamado — Financeiro"
+    assert message["url"] == f'/ti?ticket={ticket["id"]}'
+    assert message["tag"] == f'ticket-{ticket["id"]}'
+    assert sent[0]["ttl"] == 3600
 
 
 def test_login_throttle(client):

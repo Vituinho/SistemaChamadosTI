@@ -59,6 +59,9 @@ ALLOWED_ORIGINS=["http://localhost:3000"]
 COOKIE_SECURE=false
 SESSION_HOURS=8
 TIMEZONE=America/Sao_Paulo
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=http://localhost:3000
 ```
 
 Codifique caracteres reservados da senha na URL (por exemplo, `@` vira `%40`). Não publique o arquivo `.env`. Se já existir configuração local, preserve-a em vez de copiar por cima.
@@ -70,6 +73,14 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 `create-user` pergunta usuário, nome e senha duas vezes. Exige ao menos 12 caracteres e salva somente hash Argon2. Não existe senha inicial ou conta padrão. Repita o comando para cadastrar outros técnicos. Todos os técnicos têm as mesmas permissões na V1.
+
+Para habilitar notificações do computador, gere uma única vez o par de chaves Web Push:
+
+```powershell
+python -m app.manage generate-vapid
+```
+
+Copie os dois valores para o `.env`. Guarde `VAPID_PRIVATE_KEY` como segredo e não gere outro par enquanto houver computadores cadastrados.
 
 Se o PowerShell bloquear a ativação, use diretamente `.\.venv\Scripts\python.exe` no lugar de `python` em cada comando; não precisa alterar a política do Windows. Em desenvolvimento, pode acrescentar `--reload` ao Uvicorn.
 
@@ -119,7 +130,7 @@ O link de acompanhamento é uma credencial de acesso ao próprio chamado. Não h
 - Anexo opcional: PNG/JPEG/WEBP real, até 5 MB e 16 megapixels. O servidor verifica e recodifica os pixels como WEBP, sem metadados. Conteúdo salvo no PostgreSQL, acessível somente pela TI ou pela chave do chamado. Requisições têm limite de 6 MB.
 - SSE consulta revisões persistidas a cada 2 segundos, com reconexão e fallback de atualização a cada 15 segundos. Não exige Redis. O servidor libera conexões com o banco entre consultas.
 - Novo chamado gera um aviso destacado na TI com nome, setor, resumo e botão **Ver chamado**, inclusive quando os filtros da fila ocultam o pedido. O aviso permanece até ser aberto ou dispensado; se chegarem vários, mostra o mais recente e todos continuam na fila.
-- **Ativar alertas** habilita um sinal sonoro nesta aba e solicita permissão para notificações do navegador. Há controles para testar e silenciar o som. Após recarregar ou entrar novamente, ative o som de novo. Notificações do navegador dependem de permissão, HTTPS/localhost e suporte do navegador. O painel precisa permanecer aberto; não há notificações com o navegador fechado.
+- **Ativar no computador** cadastra este navegador para receber novos chamados pelas notificações do Windows, inclusive com o site fechado. O painel oferece um botão de teste e outro para desativar somente este computador. O navegador precisa continuar autorizado a funcionar em segundo plano. O som da aba continua opcional e só funciona enquanto o painel está aberto.
 - Ao confirmar **Assumir chamado**, a página de acompanhamento do colaborador mostra automaticamente **A TI está indo até você!**, com o nome do responsável. A mensagem acompanha o status **Em atendimento** e muda ao aguardar retorno, resolver ou cancelar. O colaborador deve manter seu acompanhamento aberto para ver as atualizações.
 - Sessões aleatórias revogáveis em cookies HttpOnly/SameSite, expiram após 8 horas. Logout revoga a sessão no banco. Origens de escrita são verificadas. Login limitado a 10 tentativas por IP/5 minutos por processo; execute um worker na V1.
 - Banco aplica bloqueio de linha ao assumir/alterar/resolver, para serializar ações concorrentes.
@@ -179,6 +190,18 @@ givova-ti-frontend/
 Antes de disponibilizar para outros computadores, configure os endereços reais de frontend/API, `ALLOWED_ORIGINS`, HTTPS e `COOKIE_SECURE=true`. Os dois endereços devem estar no mesmo site (por exemplo, `suporte.empresa` e `api.empresa`) por causa do cookie SameSite. Ajuste o bind dos servidores conforme a rede autorizada. No proxy reverso, desative buffering para SSE e permita conexões longas. O servidor de desenvolvimento do Next.js não é o servidor de produção: use build + start.
 
 Faça backup do PostgreSQL (inclui anexos e histórico). Não há integração WhatsApp, inventário, AD, Microsoft 365 ou gestão de SLA nesta V1. Uma futura relação de equipamento pode ser adicionada ao Ticket por migration sem mudar o identificador atual.
+
+## Produção no Render e Vercel
+
+No Render, mantenha as variáveis atuais e acrescente:
+
+```dotenv
+VAPID_PUBLIC_KEY=VALOR_GERADO_PELO_COMANDO
+VAPID_PRIVATE_KEY=VALOR_GERADO_PELO_COMANDO
+VAPID_SUBJECT=https://sistema-chamados-ti-omega.vercel.app
+```
+
+Não adicione a chave privada à Vercel. O frontend obtém a chave pública pela API depois do login. O start command do Render já executa `alembic upgrade head`, que criará a tabela de computadores cadastrados no próximo deploy. Após o deploy, entre em `/ti`, clique em **Ativar no computador**, aceite a permissão do navegador e use **Testar notificação**.
 
 ## Documentos de entrega
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge, TicketDetails } from "@/components/ticket-details";
 import { NotificationSound } from "@/lib/notification-sound";
 import { RefreshQueue } from "@/lib/refresh-queue";
+import { disableComputerNotifications, enableComputerNotifications, restoreComputerNotifications, testComputerNotification } from "@/lib/computer-notifications";
 
 type User = { id: number; name: string };
 export default function TI() {
@@ -49,8 +50,10 @@ function Panel({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [newTicket, setNewTicket] = useState<Ticket>();
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [enablingAlerts, setEnablingAlerts] = useState(false);
+  const [computerNotifications, setComputerNotifications] = useState(false);
   const sound = useRef<NotificationSound | null>(null);
   const desktopNotification = useRef<Notification | null>(null);
+  const computerNotificationsRef = useRef(false);
   const latest = useRef<number | null>(null);
   const sequence = useRef(0);
   const refreshQueue = useRef(new RefreshQueue());
@@ -69,6 +72,17 @@ function Panel({ user, onLogout }: { user: User; onLogout: () => void }) {
     sequence.current++;
   }, []);
   useEffect(() => { if (selectedId !== undefined) detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [selectedId]);
+  useEffect(() => {
+    const ticketId = Number(new URLSearchParams(window.location.search).get("ticket"));
+    const timer = Number.isInteger(ticketId) && ticketId > 0
+      ? window.setTimeout(() => openTicket(ticketId), 0)
+      : undefined;
+    void restoreComputerNotifications().then(enabled => {
+      computerNotificationsRef.current = enabled;
+      setComputerNotifications(enabled);
+    }).catch(() => {});
+    return () => { if (timer !== undefined) window.clearTimeout(timer); };
+  }, [openTicket]);
   const handleError = useCallback((e: unknown) => {
     if (e instanceof ApiError && e.status === 401) onLogout();
     else setError(e instanceof Error ? e.message : "Não foi possível carregar os chamados.");
@@ -89,7 +103,7 @@ function Panel({ user, onLogout }: { user: User; onLogout: () => void }) {
       if (incoming) {
         setNewTicket(incoming);
         sound.current?.play();
-        if ("Notification" in window && Notification.permission === "granted") {
+        if (!computerNotificationsRef.current && "Notification" in window && Notification.permission === "granted") {
           try {
             desktopNotification.current?.close();
             const notification = new Notification(`Novo chamado — ${incoming.department}`, {
@@ -127,17 +141,35 @@ function Panel({ user, onLogout }: { user: User; onLogout: () => void }) {
     // Request both permissions within the click, before waiting for either one.
     sound.current ??= new NotificationSound();
     const audio = sound.current.enable().then(() => { setSoundEnabled(true); return true; }).catch(() => { setSoundEnabled(false); return false; });
-    const permission = "Notification" in window
-      ? Notification.requestPermission().catch(() => "denied" as const)
-      : Promise.resolve("unsupported" as const);
-    const [audible, allowed] = await Promise.all([audio, permission]);
-    setNotice(`${audible ? "Som ativado nesta aba." : "O navegador não liberou o som."} ${allowed === "granted" ? "Notificações do navegador permitidas." : "Notificações do navegador indisponíveis ou sem permissão."} Os avisos na tela estão sempre ativos. Mantenha o painel aberto para receber novos chamados.`);
-    setEnablingAlerts(false);
+    try {
+      const [, audible] = await Promise.all([enableComputerNotifications(), audio]);
+      computerNotificationsRef.current = true;
+      setComputerNotifications(true);
+      setNotice(`${audible ? "Som do painel ativado." : "O navegador não liberou o som do painel."} As notificações do computador estão ativas e podem chegar mesmo com o site fechado.`);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Não foi possível ativar as notificações do computador.");
+    } finally { setEnablingAlerts(false); }
+  }
+  async function disableNotifications() {
+    setEnablingAlerts(true);
+    try {
+      await disableComputerNotifications();
+      computerNotificationsRef.current = false;
+      setComputerNotifications(false);
+      setNotice("Notificações deste computador desativadas.");
+    } catch (e) { setNotice(e instanceof Error ? e.message : "Não foi possível desativar."); }
+    finally { setEnablingAlerts(false); }
+  }
+  async function testNotification() {
+    try {
+      await testComputerNotification();
+      setNotice("Notificação de teste enviada. Ela deve aparecer no computador em alguns segundos.");
+    } catch (e) { setNotice(e instanceof Error ? e.message : "Não foi possível enviar a notificação de teste."); }
   }
   function filter(key: keyof typeof filters, value: string) { setOffset(0); setFilters(f => ({ ...f, [key]: value })); }
   return <main className="mx-auto max-w-7xl space-y-6 px-5 py-8">
-    <header className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-widest text-orange-700">CENTRAL DE ATENDIMENTO</p><h1 className="mt-2 text-3xl font-bold">Olá, {user.name}</h1><p className="mt-2 text-sm text-slate-500">{online ? "● Conectado · atualizações automáticas" : "Reconectando · atualização alternativa a cada 15 segundos"}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={enablingAlerts} onClick={() => void notifications()}><Bell />{enablingAlerts ? "Ativando…" : "Ativar alertas"}</Button><Button variant="outline" onClick={logout}><LogOut />Sair</Button></div></header>
-    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600"><span>{soundEnabled ? "Som ativado nesta aba. Deixe o painel aberto." : "Ative os alertas para ouvir quando chegar um chamado. Deixe o painel aberto."}</span>{soundEnabled && <><Button variant="outline" onClick={() => sound.current?.play()}><Volume2 />Testar som</Button><Button variant="outline" onClick={() => { sound.current?.dispose(); setSoundEnabled(false); }}>Silenciar</Button></>}</div>
+    <header className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-semibold tracking-widest text-orange-700">CENTRAL DE ATENDIMENTO</p><h1 className="mt-2 text-3xl font-bold">Olá, {user.name}</h1><p className="mt-2 text-sm text-slate-500">{online ? "● Conectado · atualizações automáticas" : "Reconectando · atualização alternativa a cada 15 segundos"}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={enablingAlerts} onClick={() => void notifications()}><Bell />{enablingAlerts ? "Ativando…" : computerNotifications ? "Notificações ativas" : "Ativar no computador"}</Button><Button variant="outline" onClick={logout}><LogOut />Sair</Button></div></header>
+    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600"><span>{computerNotifications ? "Este computador receberá novos chamados mesmo com o site fechado." : "Ative uma vez para receber novos chamados nas notificações do computador."}</span>{computerNotifications && <Button variant="outline" onClick={() => void testNotification()}><Bell />Testar notificação</Button>}{soundEnabled && <Button variant="outline" onClick={() => sound.current?.play()}><Volume2 />Testar som</Button>}{computerNotifications && <Button variant="outline" disabled={enablingAlerts} onClick={() => void disableNotifications()}>Desativar neste computador</Button>}{soundEnabled && <Button variant="outline" onClick={() => { sound.current?.dispose(); setSoundEnabled(false); }}>Silenciar painel</Button>}</div>
     {error && <div className="error flex flex-wrap items-center justify-between gap-2" role="alert">{error}<Button variant="outline" onClick={() => void refresh()}>Tentar novamente</Button></div>}
     {notice && <div className="notice flex items-center justify-between gap-3" role="status"><span>{notice}</span><button className="font-semibold underline" onClick={() => setNotice("")}>Dispensar</button></div>}
     <section className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Indicadores">

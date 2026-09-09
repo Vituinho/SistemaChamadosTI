@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     session_hours: int = 8
     timezone: str = "America/Sao_Paulo"
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

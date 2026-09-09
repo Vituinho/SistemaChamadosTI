@@ -7,7 +7,7 @@ from collections import defaultdict, deque
 from datetime import timedelta, datetime, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Depends, HTTPException, Request, Response, Query
+from fastapi import FastAPI, BackgroundTasks, Depends, HTTPException, Request, Response, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -21,9 +21,10 @@ from starlette.concurrency import run_in_threadpool
 from .catalog import DEPARTMENTS, CATEGORIES, STATUSES, PRIORITIES, TRANSITIONS
 from .config import settings
 from .database import get_db, SessionLocal
-from .models import Ticket, TicketHistory, Attachment, Technician, Session, now, utc
-from .schemas import TicketCreate, TicketUpdate, Resolution, Login, Status, Priority
+from .models import Ticket, TicketHistory, Attachment, Technician, Session, PushSubscription, now, utc
+from .schemas import TicketCreate, TicketUpdate, Resolution, Login, PushEndpoint, PushSubscriptionData, Status, Priority
 from .security import COOKIE, digest, passwords, DUMMY_HASH, current_user
+from .push_notifications import configured as push_configured, send_new_ticket, send_test_notification
 
 app = FastAPI(title="Givova TI", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins,
@@ -186,7 +187,7 @@ def validate_image(raw):
 
 
 @app.post("/tickets", status_code=201)
-async def create_ticket(request: Request, db: DBSession = Depends(get_db)):
+async def create_ticket(request: Request, background_tasks: BackgroundTasks, db: DBSession = Depends(get_db)):
     attachment = None
     try:
         if request.headers.get("content-type", "").startswith("multipart/form-data"):
@@ -210,7 +211,46 @@ async def create_ticket(request: Request, db: DBSession = Depends(get_db)):
     if attachment:
         db.add(Attachment(ticket_id=ticket.id, mime="image/webp", data=attachment))
     db.commit()
+    background_tasks.add_task(send_new_ticket, ticket.id)
     return {**ticket_data(ticket, True), "access_key": key}
+
+
+@app.get("/push/config")
+def push_config(user: Technician = Depends(current_user)):
+    return {"enabled": push_configured(), "public_key": settings.vapid_public_key if push_configured() else ""}
+
+
+@app.post("/push/subscribe")
+def subscribe_push(data: PushSubscriptionData, user: Technician = Depends(current_user), db: DBSession = Depends(get_db)):
+    if not push_configured():
+        raise HTTPException(503, "Notificações do computador ainda não foram configuradas no servidor.")
+    subscription = db.scalar(select(PushSubscription).where(PushSubscription.endpoint == data.endpoint))
+    if subscription is None:
+        subscription = PushSubscription(endpoint=data.endpoint)
+        db.add(subscription)
+    subscription.technician_id = user.id
+    subscription.p256dh = data.keys.p256dh
+    subscription.auth = data.keys.auth
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/push/unsubscribe")
+def unsubscribe_push(data: PushEndpoint, user: Technician = Depends(current_user), db: DBSession = Depends(get_db)):
+    db.execute(delete(PushSubscription).where(
+        PushSubscription.endpoint == data.endpoint,
+        PushSubscription.technician_id == user.id,
+    ))
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/push/test")
+def test_push(background_tasks: BackgroundTasks, user: Technician = Depends(current_user)):
+    if not push_configured():
+        raise HTTPException(503, "Notificações do computador ainda não foram configuradas no servidor.")
+    background_tasks.add_task(send_test_notification, user.id)
+    return {"ok": True}
 
 
 @app.get("/tickets")
