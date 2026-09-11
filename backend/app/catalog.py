@@ -1,5 +1,6 @@
 DEPARTMENTS = ["Faturamento", "Financeiro", "Logística", "Juridico", "Departamento Pessoal", "Monitoramento"]
 CATEGORIES = ["Computador", "Internet", "Impressora", "Sistema", "E-mail", "Acesso / Senha", "WhatsApp", "Telefone / Celular", "Equipamento", "Outro"]
+SYSTEMS = ["DBFrete", "Frete Brás", "E-mail / Outlook", "WhatsApp", "Sistema interno", "Outro sistema"]
 STATUSES = ["NOVO", "EM_ATENDIMENTO", "AGUARDANDO_USUARIO", "AGUARDANDO_TERCEIRO", "RESOLVIDO", "CANCELADO"]
 PRIORITIES = ["BAIXA", "NORMAL", "ALTA", "URGENTE"]
 TRANSITIONS = {

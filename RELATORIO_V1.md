@@ -1,5 +1,14 @@
 # Relatório de entrega — Givova TI
 
+## Revisão corporativa e fluxo de sistemas — 11/09/2026
+
+- Reestruturada a entrada do sistema com uma página inicial objetiva, acesso destacado para abrir chamado, tutorial e área da TI. Cabeçalho, rodapé, carregamentos, erros e estados vazios receberam linguagem e visual consistentes.
+- A abertura foi simplificada em etapas: nome, setor, localização e categoria; descrição e imagem seguem opcionais. Ao selecionar **Sistema**, a escolha do sistema afetado é obrigatória e apresenta cartões grandes para **DBFrete** e **Frete Brás**, além das demais opções de suporte.
+- Localização e sistema afetado são persistidos com a migration `0004_ticket_context.py`, exibidos no acompanhamento e nos detalhes, pesquisáveis na fila e incluídos no histórico de criação. A migration não descarta chamados já existentes.
+- Criada a página responsiva `/tutorial`. Ela lê `NEXT_PUBLIC_TUTORIAL_YOUTUBE_URL`, aceita URLs normais do YouTube e mostra uma orientação clara enquanto o vídeo não estiver configurado.
+- Painel da TI refinado para leitura rápida, filtros por sistema, busca em localização/descrição e cartões de resumo. Os cartões que representam um status filtrável continuam clicáveis; o indicador geral de pendentes permanece apenas informativo para não aplicar um filtro incorreto.
+- Validação final: suíte backend, migrations em banco SQLite isolado, lint TypeScript, checagem de tipos, testes do frontend e build de produção. A abertura e o acompanhamento de um chamado DBFrete também foram executados no navegador local.
+
 ## Carregamento do painel com banco remoto lento — 08/09/2026
 
 - Confirmado pelo acompanhamento publicado que GV-000001 existe e aguarda a TI. O painel informado pelo usuário permanecia em “Carregando chamados…”, com indicadores sem valores.

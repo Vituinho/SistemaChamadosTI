@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session as DBSession
 from starlette.datastructures import UploadFile
 from starlette.concurrency import run_in_threadpool
 
-from .catalog import DEPARTMENTS, CATEGORIES, STATUSES, PRIORITIES, TRANSITIONS
+from .catalog import DEPARTMENTS, CATEGORIES, SYSTEMS, STATUSES, PRIORITIES, TRANSITIONS
 from .config import settings
 from .database import get_db, SessionLocal
 from .models import Ticket, TicketHistory, Attachment, Technician, Session, PushSubscription, now, utc
@@ -89,7 +89,8 @@ def departments():
 
 @app.get("/catalog")
 def catalog():
-    return {"departments": DEPARTMENTS, "categories": CATEGORIES, "statuses": STATUSES, "priorities": PRIORITIES}
+    return {"departments": DEPARTMENTS, "categories": CATEGORIES, "systems": SYSTEMS,
+            "statuses": STATUSES, "priorities": PRIORITIES}
 
 
 # Bounded, process-local protection for the internal V1. Use one worker by default.
@@ -144,7 +145,7 @@ def stamp(value):
 
 
 def ticket_data(ticket, detail=False):
-    data = {key: getattr(ticket, key) for key in ["id", "name", "department", "category", "title", "status", "priority"]}
+    data = {key: getattr(ticket, key) for key in ["id", "name", "department", "location", "category", "affected_system", "title", "status", "priority"]}
     data.update(protocol=f"GV-{ticket.id:06d}", technician=ticket.technician.name if ticket.technician else None,
                 created_at=stamp(ticket.created_at), assigned_at=stamp(ticket.assigned_at), resolved_at=stamp(ticket.resolved_at))
     if detail:
@@ -191,7 +192,7 @@ async def create_ticket(request: Request, background_tasks: BackgroundTasks, db:
     attachment = None
     try:
         if request.headers.get("content-type", "").startswith("multipart/form-data"):
-            async with request.form(max_files=1, max_fields=5) as form:
+            async with request.form(max_files=1, max_fields=7) as form:
                 fields = dict(form)
                 upload = fields.pop("attachment", None)
                 if isinstance(upload, UploadFile) and upload.filename:
@@ -207,7 +208,8 @@ async def create_ticket(request: Request, background_tasks: BackgroundTasks, db:
     ticket = Ticket(**data.model_dump(), access_hash=digest(key))
     db.add(ticket)
     db.flush()
-    record(db, ticket, "Chamado criado — aguardando TI")
+    context = f" — sistema: {ticket.affected_system}" if ticket.affected_system else ""
+    record(db, ticket, f"Chamado criado — aguardando TI{context}")
     if attachment:
         db.add(Attachment(ticket_id=ticket.id, mime="image/webp", data=attachment))
     db.commit()
@@ -255,17 +257,24 @@ def test_push(background_tasks: BackgroundTasks, user: Technician = Depends(curr
 
 @app.get("/tickets")
 def list_tickets(status: Status | None = None, department: str | None = None,
-                 category: str | None = None, priority: Priority | None = None,
+                 category: str | None = None, affected_system: str | None = None,
+                 priority: Priority | None = None,
                  q: str = Query("", max_length=160), offset: int = Query(0, ge=0),
                  limit: int = Query(50, ge=1, le=100),
                  user: Technician = Depends(current_user), db: DBSession = Depends(get_db)):
     stmt = select(Ticket)
-    for field, value in [("status", status), ("department", department), ("category", category), ("priority", priority)]:
+    for field, value in [("status", status), ("department", department), ("category", category),
+                         ("affected_system", affected_system), ("priority", priority)]:
         if value:
             stmt = stmt.where(getattr(Ticket, field) == value)
     if q.strip():
         term = q.strip().lstrip("#").upper().removeprefix("GV-")
-        match = Ticket.name.icontains(q.strip(), autoescape=True) | Ticket.title.icontains(q.strip(), autoescape=True)
+        query = q.strip()
+        match = (Ticket.name.icontains(query, autoescape=True) |
+                 Ticket.title.icontains(query, autoescape=True) |
+                 Ticket.description.icontains(query, autoescape=True) |
+                 Ticket.location.icontains(query, autoescape=True) |
+                 Ticket.affected_system.icontains(query, autoescape=True))
         if term.isdigit() and len(term) < 12:
             match = match | (Ticket.id == int(term))
         stmt = stmt.where(match)

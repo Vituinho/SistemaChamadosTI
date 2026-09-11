@@ -18,6 +18,7 @@ def test_health_and_catalog(client):
     assert client.get("/health").json()["status"] == "ok"
     assert client.get("/departments").json() == ["Faturamento", "Financeiro", "Logística", "Juridico", "Departamento Pessoal", "Monitoramento"]
     assert len(client.get("/catalog").json()["categories"]) == 10
+    assert client.get("/catalog").json()["systems"][:2] == ["DBFrete", "Frete Brás"]
 
 
 def test_create_and_private_tracking(client, payload):
@@ -26,7 +27,8 @@ def test_create_and_private_tracking(client, payload):
     ticket = response.json()
     assert ticket["protocol"].startswith("GV-") and ticket["priority"] == "NORMAL"
     assert ticket["status"] == "NOVO" and len(ticket["history"]) == 1
-    assert "location" not in ticket
+    assert ticket["location"] == "Sala do Financeiro"
+    assert ticket["affected_system"] == ""
     from datetime import datetime
     assert abs((now() - datetime.fromisoformat(ticket["created_at"])).total_seconds()) < 10
     path = "/tracking/" + ticket["protocol"]
@@ -36,7 +38,7 @@ def test_create_and_private_tracking(client, payload):
     assert "access_hash" not in ticket
 
 
-@pytest.mark.parametrize("change", [{"name": " "}, {"title": "x"}, {"department": "invalid"}, {"category": "invalid"}, {"priority": "URGENTE"}, {"description": "a" * 5001}, {"department": "Administrativo"}])
+@pytest.mark.parametrize("change", [{"name": " "}, {"title": "x"}, {"department": "invalid"}, {"category": "invalid"}, {"affected_system": "Sistema inventado"}, {"category": "Sistema"}, {"priority": "URGENTE"}, {"description": "a" * 5001}, {"department": "Administrativo"}])
 def test_validation(client, payload, change):
     assert client.post("/tickets", json={**payload, **change}).status_code == 422
 
@@ -100,10 +102,23 @@ def test_filter_search_pagination(logged, payload):
     logged.post("/tickets", json={**payload, "title": "Internet lenta", "department": "Monitoramento"})
     assert logged.get("/tickets", params={"q": first["protocol"]}).json()["total"] == 1
     assert logged.get("/tickets", params={"q": "Maria"}).json()["total"] == 2
+    assert logged.get("/tickets", params={"q": "parada na fila"}).json()["total"] == 2
     assert logged.get("/tickets", params={"department": "Financeiro", "category": "Impressora", "status": "NOVO", "priority": "NORMAL"}).json()["total"] == 1
     assert logged.get("/tickets", params={"limit": 1, "offset": 1}).json()["items"][0]["title"] == "Internet lenta"
     assert logged.get("/tickets", params={"q": "%"}).json()["total"] == 0
     assert logged.get("/tickets?status=INVALID").status_code == 422
+
+
+@pytest.mark.parametrize("affected_system", ["DBFrete", "Frete Brás"])
+def test_software_ticket_and_filter(logged, payload, affected_system):
+    response = logged.post("/tickets", json={**payload, "category": "Sistema", "affected_system": affected_system,
+                                              "title": f"Erro no {affected_system}"})
+    assert response.status_code == 201
+    ticket = response.json()
+    assert ticket["affected_system"] == affected_system
+    assert affected_system in ticket["history"][0]["message"]
+    result = logged.get("/tickets", params={"affected_system": affected_system}).json()
+    assert result["total"] == 1 and result["items"][0]["id"] == ticket["id"]
 
 
 def test_auth_logout_csrf_and_expiry(client, db_factory):

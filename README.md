@@ -101,18 +101,26 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Abra [localhost:3000](http://localhost:3000). O arquivo `.env.local` contém apenas `NEXT_PUBLIC_API_URL=http://localhost:8000`. Reinicie o Next.js após mudar essa variável. Ela é pública e não deve conter secrets.
+Abra [localhost:3000](http://localhost:3000). Configure no `.env.local`:
+
+```dotenv
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_TUTORIAL_YOUTUBE_URL=
+```
+
+`NEXT_PUBLIC_TUTORIAL_YOUTUBE_URL` é opcional. Cole um link normal do YouTube, como `https://www.youtube.com/watch?v=XXXXXXXXXXX` ou `https://youtu.be/XXXXXXXXXXX`. A página `/tutorial` incorpora somente links válidos; sem configuração, ela mostra um aviso amigável em vez de um vídeo quebrado. Reinicie o Next.js após mudar essas variáveis. Elas são públicas e não devem conter secrets.
 
 Use `localhost` nos dois serviços. Misturar `127.0.0.1` e `localhost` no navegador interfere no cookie SameSite. O bind `127.0.0.1` do Uvicorn continua aceitando a conexão pelo hostname `localhost`.
 
 ## Como usar
 
-1. Colaborador abre `/` ou `/chamado`, digita seu nome e escolhe o setor e o tipo de problema nos botões grandes. Pode clicar em uma sugestão para preencher o resumo ou escrever uma frase curta. **Descrição e imagem são opcionais** e ficam em “Quer acrescentar algo?”. Os setores disponíveis são Faturamento, Financeiro, Logística, Juridico, Departamento Pessoal e Monitoramento; não há campo de localização.
-2. Ao enviar, recebe protocolo `GV-000001` e link de acompanhamento. Guarde o endereço **completo**, incluindo o fragmento após `#`. A chave não é enviada na URL ao servidor; as consultas usam um cabeçalho privado.
-3. Técnico abre `/ti`, faz login e recebe novos chamados automaticamente. `/painel` redireciona para `/ti`.
-4. Filtra/busca na fila, abre detalhes e confirma **Assumir chamado**. O responsável e o horário ficam registrados.
-5. Ajusta prioridade/status, escreve a solução e confirma **Resolver chamado**.
-6. O colaborador vê o andamento automaticamente. Histórico e solução ficam persistidos.
+1. Colaborador abre `/`, escolhe **Novo chamado**, informa nome, setor e localização, então seleciona a categoria. Pode clicar em uma sugestão para preencher o resumo ou escrever uma frase curta. **Descrição e imagem são opcionais**. Os setores disponíveis são Faturamento, Financeiro, Logística, Juridico, Departamento Pessoal e Monitoramento.
+2. Para a categoria **Sistema**, o formulário pede o sistema afetado: DBFrete, Frete Brás, E-mail / Outlook, WhatsApp, Sistema interno ou Outro sistema. Esse dado também aparece no acompanhamento, detalhes e filtros da TI.
+3. Ao enviar, recebe protocolo `GV-000001` e link de acompanhamento. Guarde o endereço **completo**, incluindo o fragmento após `#`. A chave não é enviada na URL ao servidor; as consultas usam um cabeçalho privado.
+4. Técnico abre `/ti`, faz login e recebe novos chamados automaticamente. `/painel` redireciona para `/ti`.
+5. Filtra/busca na fila, inclusive por sistema afetado, localização, descrição, protocolo, nome ou título; abre detalhes e confirma **Assumir chamado**. O responsável e o horário ficam registrados.
+6. Ajusta prioridade/status, escreve a solução e confirma **Resolver chamado**.
+7. O colaborador vê o andamento automaticamente. Histórico e solução ficam persistidos.
 
 O acompanhamento mostra as etapas Recebido → Em atendimento → Resolvido, com instruções simples. Detalhes e histórico podem ser expandidos quando necessário. Descrição omitida, vazia ou `null` na API é salva como texto vazio; o limite continua sendo 5000 caracteres quando informada. O resumo continua obrigatório, mas as sugestões evitam digitação desnecessária.
 
@@ -126,7 +134,7 @@ O link de acompanhamento é uma credencial de acesso ao próprio chamado. Não h
 - Para iniciar atendimento, use a ação de assumir; para resolver, use a ação de resolução com uma solução de 3–3000 caracteres.
 - Chamados encerrados não podem ser reabertos ou alterados nesta versão. Registre um novo chamado se necessário.
 - Prioridade inicial `NORMAL`, alterável apenas pela TI para `BAIXA`, `NORMAL`, `ALTA` ou `URGENTE`.
-- Setores e categorias centralizados em `backend/app/catalog.py`. São independentes de seed e podem futuramente ser substituídos por tabelas administrativas.
+- Setores, categorias e sistemas afetados são centralizados em `backend/app/catalog.py`. São independentes de seed e podem futuramente ser substituídos por tabelas administrativas.
 - Anexo opcional: PNG/JPEG/WEBP real, até 5 MB e 16 megapixels. O servidor verifica e recodifica os pixels como WEBP, sem metadados. Conteúdo salvo no PostgreSQL, acessível somente pela TI ou pela chave do chamado. Requisições têm limite de 6 MB.
 - SSE consulta revisões persistidas a cada 2 segundos, com reconexão e fallback de atualização a cada 15 segundos. Não exige Redis. O servidor libera conexões com o banco entre consultas.
 - Novo chamado gera um aviso destacado na TI com nome, setor, resumo e botão **Ver chamado**, inclusive quando os filtros da fila ocultam o pedido. O aviso permanece até ser aberto ou dispensado; se chegarem vários, mostra o mais recente e todos continuam na fila.
@@ -157,7 +165,7 @@ Backend, dentro de `backend`:
 
 Sem `TEST_DATABASE_URL`, pytest usa SQLite em memória para os testes rápidos e pula apenas a concorrência de bloqueio de linha. Para validar PostgreSQL, configure `TEST_DATABASE_URL` com uma conexão **de desenvolvimento/teste** e execute pytest novamente. Os testes criam e removem schemas aleatórios `test_*`, sem tocar nas tabelas da aplicação. O usuário de testes precisa de permissão para criar schemas. Não aponte para produção.
 
-As migrations são versionadas em `backend/alembic/versions`. `alembic upgrade head` cria a estrutura; `alembic check` detecta divergências com os models. `alembic downgrade base` **remove os dados**: só use em banco descartável.
+As migrations são versionadas em `backend/alembic/versions`. `alembic upgrade head` cria a estrutura; `alembic check` detecta divergências com os models. A migration `0004_ticket_context.py` acrescenta localização e sistema afetado preservando todos os chamados já existentes, que recebem texto vazio até novos dados serem informados. `alembic downgrade base` **remove os dados**: só use em banco descartável.
 
 Frontend, dentro de `givova-ti-frontend`:
 

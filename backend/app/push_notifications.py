@@ -54,7 +54,7 @@ def send_new_ticket(ticket_id: int):
             return
         _deliver(db, db.scalars(select(PushSubscription)).all(), {
             "title": f"Novo chamado — {ticket.department}",
-            "body": f"{ticket.name}: {ticket.title}",
+            "body": f"{ticket.name}: {ticket.title}" + (f" · {ticket.affected_system}" if ticket.affected_system else ""),
             "url": f"/ti?ticket={ticket.id}",
             "tag": f"ticket-{ticket.id}",
         })

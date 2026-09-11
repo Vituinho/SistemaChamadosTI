@@ -1,6 +1,6 @@
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from .catalog import CATEGORIES, DEPARTMENTS
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from .catalog import CATEGORIES, DEPARTMENTS, SYSTEMS
 
 Status = Literal["NOVO", "EM_ATENDIMENTO", "AGUARDANDO_USUARIO", "AGUARDANDO_TERCEIRO", "RESOLVIDO", "CANCELADO"]
 Priority = Literal["BAIXA", "NORMAL", "ALTA", "URGENTE"]
@@ -13,7 +13,9 @@ class CleanModel(BaseModel):
 class TicketCreate(CleanModel):
     name: str = Field(min_length=2, max_length=120)
     department: str = Field(max_length=80)
+    location: str = Field(default="", max_length=160)
     category: str = Field(max_length=80)
+    affected_system: str = Field(default="", max_length=80)
     title: str = Field(min_length=3, max_length=160)
     description: str = Field(default="", max_length=5000)
 
@@ -35,6 +37,19 @@ class TicketCreate(CleanModel):
         if value not in CATEGORIES:
             raise ValueError("Categoria inválida")
         return value
+
+    @field_validator("affected_system")
+    @classmethod
+    def system_valid(cls, value):
+        if value and value not in SYSTEMS:
+            raise ValueError("Sistema inválido")
+        return value
+
+    @model_validator(mode="after")
+    def system_required_for_software(self):
+        if self.category == "Sistema" and not self.affected_system:
+            raise ValueError("Informe o sistema afetado")
+        return self
 
 
 class TicketUpdate(CleanModel):
