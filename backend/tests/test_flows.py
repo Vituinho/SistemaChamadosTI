@@ -17,7 +17,7 @@ from app.security import digest
 def test_health_and_catalog(client):
     assert client.get("/health").json()["status"] == "ok"
     assert client.get("/departments").json() == ["Faturamento", "Financeiro", "Logística", "Juridico", "Departamento Pessoal", "Monitoramento"]
-    assert len(client.get("/catalog").json()["categories"]) == 10
+    assert len(client.get("/catalog").json()["categories"]) == 12
     assert client.get("/catalog").json()["systems"][:2] == ["DBFrete", "Frete Brás"]
     assert "SP" in client.get("/catalog").json()["states"]
 
