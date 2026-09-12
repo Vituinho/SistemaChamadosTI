@@ -1,4 +1,4 @@
-import { Monitor, Wifi, Printer, AppWindow, Mail, KeyRound, MessageCircle, Smartphone, Cable, HelpCircle } from "lucide-react";
+import { Monitor, Wifi, Printer, AppWindow, Mail, KeyRound, MessageCircle, Smartphone, Cable, HelpCircle, Truck } from "lucide-react";
 
 // Presentation hints only. Available categories and departments come from the API.
 export const problemOptions: Record<string, { icon: typeof Monitor; examples: string[] }> = {
@@ -11,5 +11,7 @@ export const problemOptions: Record<string, { icon: typeof Monitor; examples: st
   WhatsApp: { icon: MessageCircle, examples: ["WhatsApp não conecta", "Não consigo enviar mensagens"] },
   "Telefone / Celular": { icon: Smartphone, examples: ["Telefone não funciona", "Celular não liga"] },
   Equipamento: { icon: Cable, examples: ["Mouse não funciona", "Teclado não funciona", "Monitor sem imagem"] },
+  DBFrete: { icon: Truck, examples: ["Erro ao acessar DBFrete", "DBFrete está lento", "Problema com cálculo de frete"] },
+  "Fretebrás": { icon: Truck, examples: ["Erro ao acessar Fretebrás", "Fretebrás fora do ar", "Dúvida no sistema Fretebrás"] },
   Outro: { icon: HelpCircle, examples: ["Preciso de ajuda da TI"] },
 };
