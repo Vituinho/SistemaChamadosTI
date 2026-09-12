@@ -43,7 +43,7 @@ def main():
             if db.scalar(select(Ticket.id).limit(1)):
                 print("Há chamados no banco; seed ignorado.")
                 return
-            ticket = Ticket(name="Colaborador de demonstração", department=DEPARTMENTS[0], location="Matriz",
+            ticket = Ticket(name="Colaborador de demonstração", department=DEPARTMENTS[0], state="SP", location="Matriz",
                             category=CATEGORIES[0], affected_system="", title="Chamado de demonstração",
                             description="Dados fictícios para desenvolvimento.", access_hash=digest(secrets.token_urlsafe(32)))
             db.add(ticket)

@@ -1,7 +1,7 @@
 export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-export type Catalog = { departments: string[]; categories: string[]; systems: string[]; statuses: string[]; priorities: string[] };
+export type Catalog = { departments: string[]; states: string[]; categories: string[]; systems: string[]; statuses: string[]; priorities: string[] };
 export type Ticket = {
-  id: number; protocol: string; name: string; department: string; location: string;
+  id: number; protocol: string; name: string; department: string; state: string; location: string;
   category: string; affected_system: string; title: string; description: string; status: string; priority: string;
   technician: string | null; created_at: string; assigned_at: string | null;
   resolved_at: string | null; solution: string | null; has_attachment: boolean;

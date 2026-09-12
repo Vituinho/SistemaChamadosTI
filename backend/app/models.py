@@ -47,6 +47,7 @@ class Ticket(Base):
     access_hash: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(120))
     department: Mapped[str] = mapped_column(String(80), index=True)
+    state: Mapped[str] = mapped_column(String(2), default="", index=True)
     location: Mapped[str] = mapped_column(String(160), default="")
     category: Mapped[str] = mapped_column(String(80))
     affected_system: Mapped[str] = mapped_column(String(80), default="", index=True)

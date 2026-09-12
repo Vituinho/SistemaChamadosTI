@@ -56,6 +56,6 @@ def logged(client):
 
 @pytest.fixture
 def payload():
-    return {"name": "Maria Teste", "department": "Financeiro", "location": "Sala do Financeiro",
+    return {"name": "Maria Teste", "department": "Financeiro", "state": "SP", "location": "Sala do Financeiro",
             "category": "Impressora", "affected_system": "", "title": "Impressora não imprime",
             "description": "A impressão ficou parada na fila."}

@@ -1,6 +1,6 @@
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from .catalog import CATEGORIES, DEPARTMENTS, SYSTEMS
+from .catalog import BRAZILIAN_STATES, CATEGORIES, DEPARTMENTS, SYSTEMS
 
 Status = Literal["NOVO", "EM_ATENDIMENTO", "AGUARDANDO_USUARIO", "AGUARDANDO_TERCEIRO", "RESOLVIDO", "CANCELADO"]
 Priority = Literal["BAIXA", "NORMAL", "ALTA", "URGENTE"]
@@ -13,6 +13,7 @@ class CleanModel(BaseModel):
 class TicketCreate(CleanModel):
     name: str = Field(min_length=2, max_length=120)
     department: str = Field(max_length=80)
+    state: str = Field(min_length=2, max_length=2)
     location: str = Field(default="", max_length=160)
     category: str = Field(max_length=80)
     affected_system: str = Field(default="", max_length=80)
@@ -29,6 +30,14 @@ class TicketCreate(CleanModel):
     def department_valid(cls, value):
         if value not in DEPARTMENTS:
             raise ValueError("Setor inválido")
+        return value
+
+    @field_validator("state")
+    @classmethod
+    def state_valid(cls, value):
+        value = value.upper()
+        if value not in BRAZILIAN_STATES:
+            raise ValueError("Estado inválido")
         return value
 
     @field_validator("category")
