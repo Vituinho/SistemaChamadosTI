@@ -215,3 +215,4 @@ Não adicione a chave privada à Vercel. O frontend obtém a chave pública pela
 
 - [Auditoria inicial](AUDITORIA.md): estado encontrado e decisões de preservação.
 - [Relatório de entrega](RELATORIO_V1.md): verificações executadas, resultados e limitações.
+- [Publicação no cPanel](CPANEL.md): ZIP pronto para extrair na raiz do domínio, requisitos PHP/Apache, proxy, testes e limitações. O backend e o PostgreSQL continuam no Render.
