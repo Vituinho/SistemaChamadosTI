@@ -1,0 +1,34 @@
+Options -Indexes -MultiViews
+DirectoryIndex index.html
+ErrorDocument 404 /404.html
+
+<FilesMatch "(?i)(^\.|\.(env|ini|log|sql|sqlite|db|bak|pem|key|py|ts|tsx|map)$|^config\.php$)">
+    Require all denied
+</FilesMatch>
+
+RewriteEngine On
+# TLS certificate must already be active in cPanel.
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L,NE]
+RewriteRule (^|/)\. - [F,L]
+RewriteRule ^api/config\.php$ - [F,L,NC]
+RewriteRule ^api(?:/.*)?$ api/index.php [END]
+# Redirect keeps the browser fragment (#access_key), never sent to Apache.
+RewriteRule ^chamado/(GV-[0-9]+)/?$ /acompanhar/?protocol=$1 [R=302,L]
+RewriteRule ^painel/?$ /ti/ [R=302,L]
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+RewriteCond %{DOCUMENT_ROOT}/$1/index.html -f
+RewriteRule ^(.+?)/?$ $1/index.html [END]
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+    <FilesMatch "\.(html|txt)$|^push-sw\.js$">
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
+    <FilesMatch "\.(ico|svg|mp4)$">
+        Header set Cache-Control "public, max-age=3600"
+    </FilesMatch>
+</IfModule>
