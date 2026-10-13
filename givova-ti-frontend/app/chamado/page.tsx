@@ -68,7 +68,7 @@ export default function Chamado() {
     setBusy(true);
     try {
       const result = await api<Ticket & { access_key: string }>("/tickets", { method: "POST", body: data });
-      router.push(`/chamado/${result.protocol}#${result.access_key}`);
+      router.push(`/acompanhar?protocol=${encodeURIComponent(result.protocol)}#${result.access_key}`);
     } catch (e) {
       showError(e instanceof Error ? e.message : "Não foi possível enviar. Tente novamente.");
       sending.current = false;

@@ -40,6 +40,11 @@ export function age(value: string) {
 }
 // Fetch-based SSE keeps tracking keys out of URLs and retries interrupted connections.
 export function subscribe(path: string, onUpdate: () => void, onState: (online: boolean) => void, key?: string) {
+  // Apache/PHP shared hosting uses the existing 15-second polling timers.
+  if (process.env.NEXT_PUBLIC_POLLING_ONLY === "1") {
+    onState(false);
+    return () => {};
+  }
   const controller = new AbortController();
   let retry: ReturnType<typeof setTimeout>;
   async function connect() {
