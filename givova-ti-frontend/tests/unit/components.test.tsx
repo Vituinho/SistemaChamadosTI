@@ -43,12 +43,31 @@ describe("NewTicketForm", () => {
     renderWithClient(<NewTicketForm />);
     await user.click(await screen.findByRole("button", { name: "Enviar chamado" }));
     const summary = await screen.findByText(/Faltam 6 informações/);
-    expect(summary.closest("[aria-live]")).toHaveFocus();
+    // Focus moves in requestAnimationFrame after the summary renders.
+    await waitFor(() => expect(summary.closest("[aria-live]")).toHaveFocus());
     expect(screen.getByLabelText("Seu nome")).toHaveAttribute("aria-invalid", "true");
     expect(fetchMock).toHaveBeenCalledTimes(1); // only the catalog
   });
 
-  it("submits a complete ticket, saves it on this computer and opens tracking", async () => {
+  it("submits a complete ticket and opens tracking without storing anything by default", async () => {
+    const created = { id: 8, protocol: "GV-000008", access_key: "m".repeat(43), title: "Computador não liga", created_at: "2026-11-04T10:00:00Z" };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async input => (String(input).endsWith("/catalog") ? json(catalog) : json(created, 201)));
+    const user = userEvent.setup();
+    renderWithClient(<NewTicketForm />);
+    const remember = await screen.findByRole("checkbox", { name: /Lembrar meus dados e chamados/ });
+    expect(remember).not.toBeChecked();
+    await user.click(screen.getByRole("radio", { name: /Computador/ }));
+    await user.click(screen.getByRole("button", { name: "Computador não liga" }));
+    await user.type(screen.getByLabelText("Seu nome"), "Ana Souza");
+    await user.selectOptions(screen.getByLabelText("Estado"), "PR");
+    await user.click(screen.getByRole("radio", { name: "Jurídico" }));
+    await user.type(screen.getByLabelText("Onde você está?"), "Sala 3");
+    await user.click(screen.getByRole("button", { name: "Enviar chamado" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(`/acompanhar/?protocol=GV-000008#${"m".repeat(43)}`));
+    expect(localStorage.length).toBe(0);
+  });
+
+  it("submits a complete ticket, saves it on this computer when the employee opts in", async () => {
     const created = { id: 7, protocol: "GV-000007", access_key: "k".repeat(43), title: "Computador não liga", created_at: "2026-11-04T10:00:00Z" };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async input => (String(input).endsWith("/catalog") ? json(catalog) : json(created, 201)));
     const user = userEvent.setup();
@@ -59,6 +78,7 @@ describe("NewTicketForm", () => {
     await user.selectOptions(screen.getByLabelText("Estado"), "PR");
     await user.click(screen.getByRole("radio", { name: "Jurídico" }));
     await user.type(screen.getByLabelText("Onde você está?"), "Sala 3");
+    await user.click(screen.getByRole("checkbox", { name: /Lembrar meus dados e chamados/ }));
     await user.click(screen.getByRole("button", { name: "Enviar chamado" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/acompanhar/?protocol=GV-000007#${"k".repeat(43)}`));

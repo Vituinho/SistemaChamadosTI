@@ -26,13 +26,14 @@ export function KpiStrip({ dashboard, onSelectView, activeView, v2 }: { dashboar
       </div>
     );
   }
-  const overdue = dashboard.overdue ?? 0;
+  // null/undefined = no SLA configured (or legacy API): show no overdue information.
+  const overdue = dashboard.overdue;
   const metrics = dashboard.metrics;
   const kpis: Kpi[] = [
     ...(v2 ? [{ id: "open", label: "Abertos", value: dashboard.open ?? 0, icon: Inbox, view: "open", sub: dashboard.opened_today !== undefined ? `${dashboard.opened_today} hoje` : undefined } satisfies Kpi] : []),
     {
       id: "new", label: "Novos", value: dashboard.new, icon: Clock3, view: "new", tone: dashboard.new ? "brand" : undefined,
-      sub: overdue ? <span className="font-semibold text-red-700">{plural(overdue, "atrasado", "atrasados")}</span> : v2 ? "nenhum atrasado" : "aguardando a TI",
+      sub: typeof overdue === "number" ? (overdue > 0 ? <span className="font-semibold text-red-700">{plural(overdue, "atrasado", "atrasados")}</span> : "nenhum atrasado") : "aguardando a TI",
     },
     { id: "active", label: "Em atendimento", value: dashboard.active, icon: Wrench, view: v2 ? undefined : "active" },
     { id: "pending", label: "Aguardando", value: dashboard.pending, icon: Hourglass, view: v2 ? "waiting" : "waiting-user", sub: "colaborador ou fornecedor" },

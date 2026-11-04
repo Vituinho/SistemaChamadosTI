@@ -49,7 +49,7 @@ export async function login(page: Page, options: { fresh?: boolean } = {}) {
   sessions.set(origin, (await page.context().cookies(origin)).filter(cookie => cookie.name === "givova_session"));
 }
 
-export async function openTicket(page: Page, input: { name: string; title: string; category?: RegExp; location?: string; image?: Buffer }) {
+export async function openTicket(page: Page, input: { name: string; title: string; category?: RegExp; location?: string; image?: Buffer; remember?: boolean }) {
   await page.goto("/chamado/");
   await page.getByRole("radio", { name: input.category ?? /^Internet/ }).check({ force: true });
   await page.getByLabel("Resumo do problema").fill(input.title);
@@ -63,6 +63,8 @@ export async function openTicket(page: Page, input: { name: string; title: strin
   await page.getByLabel("Estado").selectOption("PR");
   await page.getByRole("radio", { name: "Financeiro" }).check({ force: true });
   await page.getByLabel("Onde você está?").fill(input.location ?? "Sala E2E");
+  const remember = page.getByRole("checkbox", { name: /Lembrar meus dados e chamados/ });
+  if ((await remember.isChecked()) !== Boolean(input.remember)) await remember.click();
   await page.getByRole("button", { name: "Enviar chamado" }).click();
   await expect(page).toHaveURL(/\/acompanhar\/\?protocol=GV-\d+#[A-Za-z0-9_-]{43}$/, { timeout: 45_000 });
   await expect(page.getByText(/Chamado enviado! Seu protocolo é GV-\d+/)).toBeVisible();

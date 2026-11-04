@@ -5,6 +5,7 @@ import { employeeHeadline, humanizeHistory, isOverdue } from "@/features/tickets
 import { emptyDraft, toFormData, validateDraft, type TicketDraft } from "@/features/new-ticket/validation";
 import { forgetTicket, listSavedTickets, saveTicket } from "@/features/tracking/saved-tickets";
 import { loadRequester, saveRequester } from "@/features/new-ticket/requester";
+import { forgetThisDevice, grantDeviceConsent, hasDeviceConsent } from "@/lib/device-memory";
 import { buildQuery, DEFAULT_FILTERS, queueViews } from "@/features/technician/queue-views";
 import { queueSearch } from "@/lib/api/endpoints";
 import type { Catalog } from "@/lib/api/types";
@@ -56,13 +57,19 @@ describe("ticket presentation", () => {
     expect(humanizeHistory("Ana: status EM_ATENDIMENTO → AGUARDANDO_USUARIO")).toBe("Ana: status Em atendimento → Aguardando colaborador");
     expect(humanizeHistory("Ana: prioridade NORMAL → URGENTE")).toBe("Ana: prioridade Normal → Urgente");
   });
-  it("overdue only applies to new tickets beyond the priority target", () => {
+  it("overdue only applies to new tickets beyond a configured priority target", () => {
     const now = new Date("2026-11-04T15:00:00Z").getTime();
     const base = { created_at: "2026-11-04T14:00:00Z" };
-    expect(isOverdue({ ...base, status: "NOVO", priority: "URGENTE" }, undefined, now)).toBe(true);
-    expect(isOverdue({ ...base, status: "NOVO", priority: "NORMAL" }, undefined, now)).toBe(false);
-    expect(isOverdue({ ...base, status: "EM_ATENDIMENTO", priority: "URGENTE" }, undefined, now)).toBe(false);
+    const sla = { URGENTE: 15, ALTA: 30, NORMAL: 120, BAIXA: 480 };
+    expect(isOverdue({ ...base, status: "NOVO", priority: "URGENTE" }, sla, now)).toBe(true);
+    expect(isOverdue({ ...base, status: "NOVO", priority: "NORMAL" }, sla, now)).toBe(false);
+    expect(isOverdue({ ...base, status: "EM_ATENDIMENTO", priority: "URGENTE" }, sla, now)).toBe(false);
     expect(isOverdue({ ...base, status: "NOVO", priority: "NORMAL" }, { URGENTE: 5, ALTA: 10, NORMAL: 30, BAIXA: 60 }, now)).toBe(true);
+  });
+  it("without configured SLA targets nothing is ever overdue (no implicit policy)", () => {
+    const old = { created_at: "2020-01-01T00:00:00Z", status: "NOVO" as const, priority: "URGENTE" as const };
+    expect(isOverdue(old, null)).toBe(false);
+    expect(isOverdue(old, undefined)).toBe(false);
   });
   it("employee headline names the technician", () => {
     expect(employeeHeadline("EM_ATENDIMENTO", "Ana").title).toBe("A TI está indo até você!");
@@ -95,8 +102,39 @@ describe("ticket form validation", () => {
   });
 });
 
-describe("local storage helpers", () => {
+describe("local storage helpers (shared computers)", () => {
+  it("stores nothing without the employee's consent", () => {
+    saveTicket({ protocol: "GV-1", accessKey: KEY, title: "T", createdAt: new Date().toISOString() });
+    saveRequester({ name: "Ana", department: "Financeiro", state: "PR", location: "Sala 1" });
+    expect(localStorage.length).toBe(0);
+    expect(listSavedTickets()).toEqual([]);
+    expect(loadRequester()).toBeNull();
+  });
+  it("hides data written earlier if consent is absent and wipes everything on forget", () => {
+    grantDeviceConsent();
+    saveTicket({ protocol: "GV-1", accessKey: KEY, title: "T", createdAt: new Date().toISOString() });
+    saveRequester({ name: "Ana", department: "Financeiro", state: "PR", location: "Sala 1" });
+    expect(hasDeviceConsent()).toBe(true);
+    localStorage.removeItem("givova.deviceConsent.v1");
+    expect(listSavedTickets()).toEqual([]);
+    expect(loadRequester()).toBeNull();
+    grantDeviceConsent();
+    expect(listSavedTickets()).toHaveLength(1);
+    forgetThisDevice();
+    expect(localStorage.length).toBe(0);
+  });
+  it("expires saved tickets after 30 days and requester details after 90 days", () => {
+    grantDeviceConsent();
+    saveTicket({ protocol: "GV-1", accessKey: KEY, title: "T", createdAt: new Date().toISOString() });
+    saveRequester({ name: "Ana", department: "Financeiro", state: "PR", location: "Sala 1" });
+    const day = 24 * 60 * 60 * 1000;
+    expect(listSavedTickets(Date.now() + 29 * day)).toHaveLength(1);
+    expect(listSavedTickets(Date.now() + 31 * day)).toEqual([]);
+    expect(loadRequester(Date.now() + 89 * day)).not.toBeNull();
+    expect(loadRequester(Date.now() + 91 * day)).toBeNull();
+  });
   it("keeps the 10 most recent tickets and ignores tampered entries", () => {
+    grantDeviceConsent();
     for (let i = 1; i <= 12; i++) saveTicket({ protocol: `GV-${i}`, accessKey: KEY, title: `T${i}`, createdAt: "2026-11-04T10:00:00Z" });
     expect(listSavedTickets()).toHaveLength(10);
     expect(listSavedTickets()[0].protocol).toBe("GV-12");
@@ -108,9 +146,10 @@ describe("local storage helpers", () => {
     expect(listSavedTickets()).toEqual([]);
   });
   it("remembers requester details with bounded lengths", () => {
+    grantDeviceConsent();
     saveRequester({ name: "Ana", department: "Financeiro", state: "PR", location: "Sala 1" });
     expect(loadRequester()).toEqual({ name: "Ana", department: "Financeiro", state: "PR", location: "Sala 1" });
-    localStorage.setItem("givova.requester.v1", JSON.stringify({ name: "x".repeat(500), state: 42 }));
+    localStorage.setItem("givova.requester.v1", JSON.stringify({ name: "x".repeat(500), state: 42, savedAt: new Date().toISOString() }));
     expect(loadRequester()).toEqual({ name: "x".repeat(120), department: "", state: "", location: "" });
   });
 });

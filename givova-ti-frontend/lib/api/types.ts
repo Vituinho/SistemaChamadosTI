@@ -16,7 +16,8 @@ export interface Catalog {
   priorities: Priority[];
   api_version?: number;
   features?: Feature[];
-  sla_first_response_minutes?: Record<Priority, number>;
+  /** null/absent = no first-response targets configured. */
+  sla_first_response_minutes?: Record<Priority, number> | null;
 }
 
 export interface HistoryEntry {
@@ -71,7 +72,8 @@ export interface Dashboard {
   latest_id: number;
   revision?: number;
   open?: number;
-  overdue?: number;
+  /** null when no SLA is configured. */
+  overdue?: number | null;
   opened_today?: number;
   metrics?: {
     window_days: number;
@@ -81,7 +83,7 @@ export interface Dashboard {
     resolution_count: number;
   };
   workload?: { technician_id: number; name: string; active: number }[];
-  sla_first_response_minutes?: Record<Priority, number>;
+  sla_first_response_minutes?: Record<Priority, number> | null;
 }
 
 export interface Technician {

@@ -38,13 +38,15 @@ export function isNote(entry: HistoryEntry) {
   return entry.kind === "note";
 }
 
-const DEFAULT_SLA: Record<Priority, number> = { URGENTE: 15, ALTA: 30, NORMAL: 120, BAIXA: 480 };
-
-/** A new ticket waiting longer than the first-response target for its priority. */
-export function isOverdue(ticket: Pick<TicketSummary, "status" | "priority" | "created_at">, sla: Record<Priority, number> | undefined, now = Date.now()) {
-  if (ticket.status !== "NOVO") return false;
-  const limit = (sla ?? DEFAULT_SLA)[ticket.priority] ?? DEFAULT_SLA.NORMAL;
-  return now - new Date(ticket.created_at).getTime() > limit * 60_000;
+/**
+ * A new ticket waiting longer than the first-response target for its priority.
+ * Targets come only from the API configuration (SLA_FIRST_RESPONSE_MINUTES);
+ * without them nothing is ever flagged — there is no built-in policy.
+ */
+export function isOverdue(ticket: Pick<TicketSummary, "status" | "priority" | "created_at">, sla: Record<Priority, number> | null | undefined, now = Date.now()) {
+  if (!sla || ticket.status !== "NOVO") return false;
+  const limit = sla[ticket.priority];
+  return typeof limit === "number" && now - new Date(ticket.created_at).getTime() > limit * 60_000;
 }
 
 /** Employee-facing headline per status. */

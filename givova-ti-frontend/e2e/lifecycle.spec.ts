@@ -15,7 +15,7 @@ test.describe("ticket lifecycle through the cPanel build", () => {
     const title = `Sem internet E2E ${Date.now()}`;
 
     // Employee opens a ticket with a screenshot.
-    const created = await openTicket(employee, { name: "Colaboradora E2E", title, image: PNG });
+    const created = await openTicket(employee, { name: "Colaboradora E2E", title, image: PNG, remember: true });
     await expect(employee.getByRole("heading", { name: "A TI recebeu seu pedido" })).toBeVisible();
     await expect(employee.getByAltText("Imagem enviada com o chamado")).toBeVisible();
 
@@ -112,6 +112,29 @@ test.describe("ticket lifecycle through the cPanel build", () => {
     await alert.getByRole("button", { name: "Ver chamado" }).click();
     await expect(technician.getByRole("heading", { name: title })).toBeVisible();
     await technicianContext.close();
+  });
+
+  test("shared computers: by default nothing about the employee is stored", async ({ page }) => {
+    const title = `Computador compartilhado ${Date.now()}`;
+    await openTicket(page, { name: "Pessoa Compartilhada", title, location: "Recepção" });
+    await expect(page.getByText(/nada foi salvo neste computador/)).toBeVisible();
+    expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith("givova.")))).toEqual([]);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Seus chamados neste computador" })).toHaveCount(0);
+    await page.goto("/chamado/");
+    await expect(page.getByLabel("Seu nome")).toHaveValue("");
+  });
+
+  test("opt-in memory can be wiped with \"Esquecer este computador\"", async ({ page }) => {
+    const title = `Meu computador ${Date.now()}`;
+    await openTicket(page, { name: "Pessoa Fixa", title, remember: true });
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: new RegExp(title) })).toBeVisible();
+    await page.getByRole("button", { name: "Esquecer este computador" }).click();
+    await expect(page.getByRole("heading", { name: "Seus chamados neste computador" })).toHaveCount(0);
+    expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith("givova.")))).toEqual([]);
+    await page.goto("/chamado/");
+    await expect(page.getByLabel("Seu nome")).toHaveValue("");
   });
 
   test("employee form validation and attachment rules", async ({ page }) => {

@@ -3,20 +3,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { MapPin, Pencil, Send, Sparkles, UserRound } from "lucide-react";
+import { MapPin, Pencil, Send, Sparkles, UserRound, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Alert, Card, Skeleton } from "@/components/ui/primitives";
 import { Checkbox } from "@/components/ui/switch";
 import { api } from "@/lib/api/endpoints";
 import { errorMessage } from "@/lib/api/client";
+import { forgetThisDevice, grantDeviceConsent, hasDeviceConsent } from "@/lib/device-memory";
 import { trackingPath } from "@/lib/tracking-link";
 import { cn } from "@/lib/utils";
 import { displayDepartment } from "@/features/tickets/meta";
 import { saveTicket } from "@/features/tracking/saved-tickets";
 import { AttachmentField } from "./attachment-field";
 import { ChoiceTiles } from "./choice-tiles";
-import { forgetRequester, loadRequester, saveRequester } from "./requester";
+import { loadRequester, saveRequester } from "./requester";
 import { CATEGORY_HINTS, categoryHint, isSuggestion } from "./suggestions";
 import { emptyDraft, FIELD_ORDER, toFormData, validateDraft, type DraftErrors, type TicketDraft } from "./validation";
 
@@ -38,7 +39,8 @@ export function NewTicketForm() {
   const [draft, setDraft] = useState<TicketDraft>(emptyDraft);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [attempted, setAttempted] = useState(false);
-  const [remember, setRemember] = useState(true);
+  // Opt-in: shared computers must not keep anyone's data by default.
+  const [remember, setRemember] = useState(false);
   const [editingRequester, setEditingRequester] = useState(true);
   const summaryRef = useRef<HTMLDivElement>(null);
 
@@ -47,6 +49,7 @@ export function NewTicketForm() {
   useEffect(() => {
     const saved = loadRequester();
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRemember(hasDeviceConsent());
     setDraft(current => ({ ...current, ...(saved ?? {}), category: CATEGORY_HINTS[categoryParam] ? categoryParam : current.category }));
     if (saved?.name && saved.department && saved.state && saved.location) setEditingRequester(false);
   }, [categoryParam]);
@@ -76,9 +79,14 @@ export function NewTicketForm() {
   const mutation = useMutation({
     mutationFn: (value: TicketDraft) => api.createTicket(toFormData(value)),
     onSuccess: (ticket, value) => {
-      saveTicket({ protocol: ticket.protocol, accessKey: ticket.access_key, title: ticket.title, createdAt: ticket.created_at });
-      if (remember) saveRequester({ name: value.name.trim(), department: value.department, state: value.state, location: value.location.trim() });
-      else forgetRequester();
+      if (remember) {
+        grantDeviceConsent();
+        saveRequester({ name: value.name.trim(), department: value.department, state: value.state, location: value.location.trim() });
+        saveTicket({ protocol: ticket.protocol, accessKey: ticket.access_key, title: ticket.title, createdAt: ticket.created_at });
+      } else {
+        // Unticked: wipe anything previously remembered on this computer.
+        forgetThisDevice();
+      }
       try {
         sessionStorage.setItem(JUST_CREATED_KEY, ticket.protocol);
       } catch {
@@ -250,14 +258,29 @@ export function NewTicketForm() {
                   <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" aria-hidden="true" />{validDraft.location}</span>
                 </p>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => setEditingRequester(true)}>
-                <Pencil /> Alterar
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setEditingRequester(true)}>
+                  <Pencil /> Alterar
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    forgetThisDevice();
+                    setRemember(false);
+                    setDraft(current => ({ ...current, name: "", department: "", state: "", location: "" }));
+                    setEditingRequester(true);
+                  }}
+                >
+                  <UserX /> Não sou eu
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="grid gap-5 sm:grid-cols-6">
               <Field id="field-name" label="Seu nome" error={errors.name} className="sm:col-span-4">
-                {props => <Input {...props} value={validDraft.name} maxLength={120} autoComplete="name" onChange={e => update("name", e.target.value)} placeholder="Nome e sobrenome" />}
+                {props => <Input {...props} value={validDraft.name} maxLength={120} autoComplete={remember ? "name" : "off"} onChange={e => update("name", e.target.value)} placeholder="Nome e sobrenome" />}
               </Field>
               <Field id="field-state" label="Estado" error={errors.state} className="sm:col-span-2">
                 {props => (
@@ -286,8 +309,10 @@ export function NewTicketForm() {
           <label className="flex items-start gap-3 text-sm text-slate-700">
             <Checkbox checked={remember} onCheckedChange={value => setRemember(value === true)} className="mt-0.5" aria-describedby="remember-hint" />
             <span>
-              Lembrar meus dados neste computador
-              <span id="remember-hint" className="block text-xs text-slate-500">Desmarque em computadores compartilhados.</span>
+              Lembrar meus dados e chamados neste computador
+              <span id="remember-hint" className="block text-xs text-slate-600">
+                Marque somente se este computador é usado só por você. Em computadores compartilhados, deixe desmarcado: nada fica salvo.
+              </span>
             </span>
           </label>
         </Card>

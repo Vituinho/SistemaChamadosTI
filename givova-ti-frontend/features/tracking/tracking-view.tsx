@@ -24,6 +24,7 @@ import { displayDepartment, employeeHeadline, isNote } from "@/features/tickets/
 import { Timeline } from "@/features/tickets/timeline";
 import { JUST_CREATED_KEY } from "@/features/new-ticket/new-ticket-form";
 import { PasteTrackingLink, RecentTickets } from "./recent-tickets";
+import { hasDeviceConsent } from "@/lib/device-memory";
 import { saveTicket } from "./saved-tickets";
 
 function useAccessKey(): string | null {
@@ -77,6 +78,7 @@ function TicketTracking({ protocol, accessKey }: { protocol: string; accessKey: 
   const queryKey = ["tracking", protocol, accessKey];
   const headers = { "X-Ticket-Key": accessKey };
   const [justCreated, setJustCreated] = useState(false);
+  const [remembered, setRemembered] = useState(false);
 
   const query = useQuery({
     queryKey,
@@ -93,6 +95,7 @@ function TicketTracking({ protocol, accessKey }: { protocol: string; accessKey: 
         sessionStorage.removeItem(JUST_CREATED_KEY);
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setJustCreated(true);
+        setRemembered(hasDeviceConsent());
       }
     } catch {
       // sessionStorage unavailable
@@ -101,6 +104,7 @@ function TicketTracking({ protocol, accessKey }: { protocol: string; accessKey: 
 
   const ticket = query.data;
   useEffect(() => {
+    // Refreshes the saved entry only when the employee opted in on this computer (no-op otherwise).
     if (ticket) saveTicket({ protocol: ticket.protocol, accessKey, title: ticket.title, createdAt: ticket.created_at });
   }, [ticket, accessKey]);
 
@@ -132,7 +136,11 @@ function TicketTracking({ protocol, accessKey }: { protocol: string; accessKey: 
           <PartyPopper className="mt-0.5 size-5 shrink-0 text-emerald-700" aria-hidden="true" />
           <div>
             <p className="font-semibold">Chamado enviado! Seu protocolo é {ticket.protocol}.</p>
-            <p className="text-sm">A TI já foi avisada. Este chamado ficou salvo neste computador; você também pode copiar o link abaixo.</p>
+            <p className="text-sm">
+              {remembered
+                ? "A TI já foi avisada. Este chamado ficou salvo neste computador; você também pode copiar o link abaixo."
+                : "A TI já foi avisada. Para acompanhar depois, copie o link abaixo — nada foi salvo neste computador."}
+            </p>
           </div>
         </div>
       )}

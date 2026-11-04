@@ -53,7 +53,7 @@ export function TicketPanel({
   onRetry: () => void;
   onClose?: () => void;
   catalog?: Catalog;
-  sla?: Record<Priority, number>;
+  sla?: Record<Priority, number> | null;
   features: { notes: boolean; trackingLink: boolean };
 }) {
   const client = useQueryClient();

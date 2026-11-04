@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError, Input, Label } from "@/components/ui/form";
 import { formatRelative } from "@/lib/format";
 import { parseTrackingLink, trackingPath } from "@/lib/tracking-link";
+import { forgetThisDevice } from "@/lib/device-memory";
 import { forgetTicket, listSavedTickets, type SavedTicket } from "./saved-tickets";
 
 /** Tickets saved on this computer (localStorage). Renders nothing until hydrated. */
@@ -26,6 +27,17 @@ export function RecentTickets({ limit = 4, compact = false }: { limit?: number; 
           <ClipboardList className="size-4 text-brand-700" aria-hidden="true" />
           Seus chamados neste computador
         </h2>
+        <Button
+          variant="link"
+          size="sm"
+          className="text-xs text-slate-600"
+          onClick={() => {
+            forgetThisDevice();
+            setItems([]);
+          }}
+        >
+          Esquecer este computador
+        </Button>
       </div>
       <ul className="mt-3 divide-y divide-slate-100">
         {items.slice(0, limit).map(item => (
