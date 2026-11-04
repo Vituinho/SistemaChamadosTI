@@ -96,6 +96,8 @@ Ambiente: `dist/cpanel.zip` extraído em Apache 2.4.69 + PHP 8.3 (Docker), HTTPS
 - axe WCAG 2.2 AA (sério/crítico = 0) em início, abrir chamado (com e sem erros), acompanhamento, tutorial, login e painel com detalhe aberto; teclado (link "pular para o conteúdo" e foco visível).
 - Sem rolagem horizontal em 375 px, 768 px e 1366 px, inclusive no painel da TI.
 
+Pacote validado: `dist/cpanel.zip` gerado do commit `0f5844b` (3,34 MiB, 84 arquivos, 8 hashes CSP), SHA-256 `0b9d7c529dfe632a67c4f8f104629d1ce05b4eaceca8c45e4c9da634784a96f8`.
+
 As primeiras execuções encontraram e motivaram correções reais: nome acessível dos links do logotipo e dos botões de conta/filtros/notificações, contraste de textos sobre o fundo cinza e região rolável do detalhe sem foco por teclado.
 
 ## 8. Pendências e limitações (não verificadas)
@@ -104,7 +106,7 @@ As primeiras execuções encontraram e motivaram correções reais: nome acessí
 2. A API NestJS **não foi implantada**. Siga `backend-nest/README.md` (novo serviço, `npm run migrate`, validação) e depois troque `api/config.php`.
 3. Conta cPanel real (LiteSpeed, ModSecurity, limites do provedor) não testada; a validação usou Apache 2.4 + PHP 8.3.
 4. Web Push com o navegador fechado não foi testado de ponta a ponta (depende de VAPID, permissão e serviço do navegador); o envio e a limpeza de assinaturas foram testados com transporte simulado.
-5. O limite de login por IP é compartilhado por todos atrás do proxy do cPanel (30 tentativas/5 min por IP; 10 por usuário).
+5. **API atual (FastAPI) atrás do proxy do cPanel:** o limite é de 10 logins por IP a cada 5 min, *contando os bem-sucedidos*, e todos os técnicos chegam com o IP do cPanel. Reproduzido no E2E (429 após 10 logins): na prática, a equipe inteira divide 10 logins a cada 5 min. A API NestJS limita por usuário+IP (10, zerado após sucesso) e por IP (30), o que resolve o problema após o cutover.
 6. Indicador "Atrasado" usa metas de 1º atendimento configuráveis (`SLA_FIRST_RESPONSE_MINUTES`) — confirme os valores com a equipe.
 7. Recuperação de senha pela interface não existe; use `npm run cli -- reset-password <usuario>`.
 
