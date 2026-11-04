@@ -1,40 +1,95 @@
-# Givova TI — backend NestJS / Node.js
+# Givova TI — API (NestJS)
 
-This is a **drop-in API migration**, not a new empty ticketing system. The existing frontend is already Next.js 16 and remains at ../givova-ti-frontend. The Python/FastAPI backend stays in ../backend strictly for rollback until the cutover is verified.
+API da central de chamados. Substitui o backend Python/FastAPI (`../backend`, mantido apenas para rollback) **sem mudar o contrato** usado pelo frontend nem os dados existentes.
 
-## Compatibility contract
+- Node.js 22.12+ · NestJS 11 · PostgreSQL 16+ (`pg`, SQL parametrizado, pool e transações)
+- Hashes Argon2 e SHA-256 compatíveis com o backend legado: técnicos **não** precisam trocar senha; sessões e links de acompanhamento continuam válidos.
+- Mesmas rotas, mesmos campos JSON e mesmo cookie `givova_session`; recursos novos são **aditivos** e anunciados em `GET /catalog → features`.
 
-- Existing PostgreSQL schema is reused as-is. Tables: technicians, sessions, tickets, ticket_history, attachments, push_subscriptions.
-- Existing Argon2 password hashes are verified by the Node argon2 package; technicians do **not** need password resets.
-- Existing SHA-256 session and tracking-key hashes are reused. Same cookie name and JSON fields.
-- Endpoints: GET /health, /departments, /catalog, /auth/me, /dashboard, /tickets, /tickets/:id, /tickets/:id/history, /tickets/:id/attachment, /tracking/:protocol, /tracking/:protocol/attachment, /events, /tracking/:protocol/events, /push/config; POST /auth/login, /auth/logout, /tickets, /tickets/:id/assign, /tickets/:id/resolve, /push/subscribe, /push/unsubscribe, /push/test; PATCH /tickets/:id.
-- Ticket updates use PostgreSQL transactions and row locks; attachments are inspected and recoded to WEBP by sharp. Login is limited per IP + username (avoids false lockouts when users share a cPanel proxy IP).
-- Time zone for daily dashboard totals is America/Sao_Paulo. Browser cPanel export uses 15s polling and the existing PHP proxy.
+## Estrutura
 
-## Local setup
+```text
+src/
+  main.ts / bootstrap.ts   inicialização, helmet, CORS, CSRF, limites, logs, filtro de erros
+  config/                  variáveis de ambiente tipadas e validadas (falha rápida)
+  common/                  catálogo, cripto, protocolo, contrato de erro, middlewares, validação
+  database/                pool PostgreSQL, transações, migrations, detecção de schema
+  auth/                    login (limite de tentativas), sessões, guard, DTO
+  tickets/                 controller público/TI, rastreamento, serviço, repositório SQL, imagens, SSE
+  dashboard/               indicadores reais (tempo de 1º atendimento, resolução, atrasos, carga)
+  push/                    Web Push (VAPID)
+  cli/                     migrate, create-user, reset-password, revoke-sessions, list-users, generate-vapid
+migrations/                SQL somente aditivo (0000 = baseline idêntico ao Alembic 0001–0005)
+test/                      unitários + integração com PostgreSQL real
+```
 
-Node.js 22 and an existing PostgreSQL schema with Python Alembic migrations through 0005 are required.
+## Configuração
 
-1. Copy .env.example to .env. Set DATABASE_URL to a *development* database with the existing schema. Never copy production secrets into Git.
-2. npm install
-3. npm run check
-4. npm run dev (listens on PORT, default 8000)
+Copie `.env.example` para `.env` (nunca versione). Principais variáveis:
 
-Next frontend: cd ../givova-ti-frontend; npm ci; set NEXT_PUBLIC_API_URL=http://localhost:8000 in .env.local; npm run dev.
+| Variável | Padrão | Observação |
+| --- | --- | --- |
+| `DATABASE_URL` | — | Obrigatória. Use banco de desenvolvimento ao testar. |
+| `DATABASE_SSL` | `false` | `true` para conexões externas com certificado válido. |
+| `ALLOWED_ORIGINS` | `["http://localhost:3000"]` | Lista JSON de origens do frontend (CORS + verificação de escrita). |
+| `COOKIE_SECURE` | `true` | Obrigatório `true` com `NODE_ENV=production`. |
+| `SESSION_HOURS` | `8` | Duração fixa da sessão (1–72). |
+| `TRUST_PROXY` | `0` | Número de proxies confiáveis à frente da API (Render: `1`). |
+| `LOGIN_MAX_ATTEMPTS` / `LOGIN_MAX_ATTEMPTS_PER_IP` | `10` / `30` | Janela de 5 min. |
+| `SLA_FIRST_RESPONSE_MINUTES` | `{"URGENTE":15,"ALTA":30,"NORMAL":120,"BAIXA":480}` | Define quando um chamado NOVO fica "atrasado". |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | vazio | Reutilize o par já usado em produção. |
+| `TIMEZONE` | `America/Sao_Paulo` | Usado em "resolvidos hoje". |
+| `LOG_FORMAT` | `json` em produção | Logs estruturados com `requestId`. |
 
-For a fresh environment, run **legacy Alembic migrations through 0005 once** (using ../backend), then create a technician in Nest with CREATE_USER_PASSWORD=... npm run create-user after building. This script only inserts into technicians and never changes the schema. Existing users are retained automatically.
+Configuração inválida impede a inicialização com mensagem clara.
 
-## Render deployment and safe cutover
+## Comandos
 
-1. Back up production PostgreSQL, including ticket attachments and sessions.
-2. Create a **new** Render Node web service for this branch. Set root directory backend-nest, build npm install && npm run build, start npm start, health path /health. Do not replace the existing Python service yet.
-3. Provide DATABASE_URL (matching existing schema after read-only verification), DATABASE_SSL as needed, ALLOWED_ORIGINS as JSON, COOKIE_SECURE=true, SESSION_HOURS=8, and the **existing** VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT. Keep keys private.
-4. Test GET /health and /catalog. Use a disposable staging DB to exercise login, opening, assigning, resolving, image validation, logout and push notifications before switching real traffic. Confirm Argon2 hashes, existing tickets and linked history.
-5. The cPanel static build uses /api and a narrow PHP proxy. **The ZIP defaults to the existing Python Render URL** so the current live service is not switched by extracting a ZIP. Once Nest is deployed and verified, change deploy/cpanel/api/config.php to the new fixed https://YOUR-NEST-SERVICE.onrender.com URL and rebuild the ZIP using python3 scripts/build_cpanel.py.
-6. Keep the old API available for rollback; restore the former proxy URL if the new backend fails. Do not run unrelated destructive migrations.
+```bash
+npm ci
+npm run build
+npm run migrate          # aplica migrations pendentes (nunca roda sozinho)
+npm run migrate -- --dry-run
+npm start                # porta PORT (padrão 8000)
+npm run cli -- create-user
+npm run cli -- reset-password <usuario>   # também encerra as sessões do usuário
+npm run cli -- revoke-sessions <usuario>
+npm run cli -- list-users
+```
 
-The proxy validates the configured hostname against *.onrender.com; this is deliberate SSRF protection. For deployment on Railway, separately review and update both the backend URL and the fixed-hostname allowlist in deploy/cpanel/api/index.php.
+Senhas são pedidas sem eco no terminal (ou via `GIVOVA_PASSWORD` em scripts) e nunca aceitas como argumento de linha de comando.
 
-## Build & tests
+## Banco de dados e migrations
 
-npm run check performs TypeScript compilation and validation contract tests. The repository's cPanel workflow also builds the frontend export and produces a ZIP artifact. These checks do **not** establish production DB, browser, or live Web Push compatibility; run a full staging smoke test before cutover.
+- `0000_baseline.sql` reproduz exatamente o schema criado pelas migrations Alembic 0001–0005 (verificado por `pg_dump` no CI). Só é aplicado em banco **vazio**.
+- Em banco existente (produção), o comando exige `alembic_version = 0005`, pula o baseline e aplica apenas o que falta.
+- `0006_history_kind_and_indexes.sql` é aditivo: colunas `ticket_history.kind/author_name` (com default, compatíveis com o FastAPI) e índices. Nenhuma migration remove ou reescreve dados; um teste bloqueia `DROP`, `TRUNCATE`, `DELETE` e mudança de tipo.
+- Sem a 0006 a API continua funcionando; apenas o recurso de mensagens fica desativado (anunciado em `/catalog`).
+
+## Segurança
+
+- Sessão: token aleatório de 256 bits; no banco apenas SHA-256; cookie `HttpOnly`, `SameSite=Strict`, `Secure`; validação no servidor a cada requisição; logout e CLI revogam.
+- CSRF: SameSite estrito + verificação de `Origin`/`Sec-Fetch-Site` + bloqueio de tipos de conteúdo de formulário.
+- Validação: DTOs `class-validator` rejeitam campos desconhecidos (422 `{ detail, fields }`).
+- Uploads: somente `POST /tickets`, um arquivo `attachment` até 5 MB; conteúdo verificado pelo `sharp` (PNG/JPEG/WEBP, ≤16 MP, sem animação) e recodificado em WEBP sem metadados; servido com `CSP sandbox`.
+- Acompanhamento: chave aleatória só no cabeçalho `X-Ticket-Key`, comparação em tempo constante; protocolo sozinho não revela nada.
+- Cabeçalhos via helmet, `Cache-Control: no-store`, erros sem detalhes internos, logs sem query string, corpo ou segredos.
+
+## Testes
+
+```bash
+npm run typecheck
+TEST_DATABASE_URL=postgresql://usuario:senha@localhost:5432/banco_descartavel npm test
+```
+
+Os testes de integração criam um schema `test_<aleatório>` por suíte e o removem ao final. Sem `TEST_DATABASE_URL` eles aparecem como *skipped*. **Nunca** aponte para produção.
+
+## Deploy no Render e troca segura (cutover)
+
+1. **Backup** do PostgreSQL de produção (`pg_dump -Fc`), incluindo anexos e histórico. Teste a restauração em um banco descartável.
+2. Crie um **novo** Web Service Node (não substitua o Python ainda): root `backend-nest`, build `npm ci && npm run build`, start `npm start`, health check `/health`.
+3. Variáveis: `NODE_ENV=production`, `DATABASE_URL` (a mesma do serviço atual), `DATABASE_SSL` conforme a conexão, `TRUST_PROXY=1`, `COOKIE_SECURE=true`, `ALLOWED_ORIGINS=["https://suporte.givovatransportes.com.br"]`, e as **mesmas** chaves `VAPID_*` do serviço atual.
+4. Em um shell do serviço: `npm run migrate -- --dry-run` (deve listar só `0006…`), depois `npm run migrate`.
+5. Valide `GET /health` e `GET /catalog` (deve conter `"api_version":2`). Faça login com um técnico existente.
+6. No cPanel, altere `api/config.php` → `backend_url` para a URL do novo serviço. Teste abrir, assumir e resolver um chamado de teste.
+7. Rollback: volte `backend_url` para o serviço Python. A migration 0006 não impede o FastAPI de funcionar (colunas novas têm default); apenas mensagens da TI aparecem sem o nome do autor.
