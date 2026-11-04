@@ -208,6 +208,35 @@ describe('configuration', () => {
   });
 });
 
+describe('Railway production configuration', () => {
+  const prod = { DATABASE_URL: 'postgresql://u:p@postgres.railway.internal:5432/railway', NODE_ENV: 'production', ALLOWED_ORIGINS: '["https://suporte.givovatransportes.com.br"]' };
+  test('production requires explicit HTTPS origins', () => {
+    assert.throws(() => loadConfig({ ...prod, ALLOWED_ORIGINS: undefined }), ConfigError);
+    assert.throws(() => loadConfig({ ...prod, ALLOWED_ORIGINS: '["http://suporte.givovatransportes.com.br"]' }), ConfigError);
+    assert.deepEqual(loadConfig(prod).allowedOrigins, ['https://suporte.givovatransportes.com.br']);
+  });
+  test('trusts exactly one proxy hop on Railway unless overridden', () => {
+    assert.equal(loadConfig(prod).trustProxy, 0);
+    assert.equal(loadConfig({ ...prod, RAILWAY_ENVIRONMENT_NAME: 'production' }).trustProxy, 1);
+    assert.equal(loadConfig({ ...prod, RAILWAY_PROJECT_ID: 'x', TRUST_PROXY: '0' }).trustProxy, 0);
+  });
+  test('binds dual-stack by default and validates HOST and shutdown grace', () => {
+    const config = loadConfig(prod);
+    assert.equal(config.host, '::');
+    assert.equal(config.shutdownGraceMs, 10_000);
+    assert.equal(loadConfig({ ...prod, HOST: '0.0.0.0', SHUTDOWN_GRACE_SECONDS: '5' }).shutdownGraceMs, 5000);
+    assert.throws(() => loadConfig({ ...prod, HOST: '10.0.0.5' }), ConfigError);
+    assert.throws(() => loadConfig({ ...prod, SHUTDOWN_GRACE_SECONDS: '0' }), ConfigError);
+  });
+  test('warns when the database is reached through the public TCP proxy', () => {
+    assert.deepEqual(loadConfig({ ...prod, RAILWAY_PROJECT_ID: 'x' }).warnings, []);
+    const config = loadConfig({ ...prod, RAILWAY_PROJECT_ID: 'x', DATABASE_URL: 'postgresql://u:p@shuttle.proxy.rlwy.net:12345/railway' });
+    assert.equal(config.warnings.length, 1);
+    assert.match(config.warnings[0], /proxy TCP público/);
+    assert.throws(() => loadConfig({ ...prod, DATABASE_URL: 'postgresql://' }), ConfigError);
+  });
+});
+
 describe('sliding window limiter and push endpoints', () => {
   test('limits per key inside the window and recovers', () => {
     let now = 0;

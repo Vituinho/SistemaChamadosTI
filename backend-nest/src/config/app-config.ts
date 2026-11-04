@@ -11,6 +11,10 @@ export interface VapidConfig {
 export interface AppConfig {
   env: 'production' | 'development' | 'test';
   port: number;
+  /** Bind address. Default "::" (dual-stack IPv6 + IPv4). */
+  host: string;
+  /** Time to let in-flight requests finish after SIGTERM (keep below Railway's draining time). */
+  shutdownGraceMs: number;
   databaseUrl: string;
   databaseSsl: boolean;
   databasePoolMax: number;
@@ -18,7 +22,7 @@ export interface AppConfig {
   cookieSecure: boolean;
   sessionHours: number;
   timezone: string;
-  /** Number of trusted reverse proxies (Render = 1). 0 disables X-Forwarded-For. */
+  /** Number of trusted reverse proxies (Railway edge = 1). 0 disables X-Forwarded-For. */
   trustProxy: number;
   loginMaxAttempts: number;
   loginMaxAttemptsPerIp: number;
@@ -34,6 +38,8 @@ export interface AppConfig {
   slaFirstResponseMinutes: Record<Priority, number> | null;
   vapid: VapidConfig | null;
   logFormat: 'json' | 'pretty';
+  /** Non-fatal configuration findings, logged at startup. */
+  warnings: string[];
 }
 
 export class ConfigError extends Error {}
@@ -142,17 +148,38 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   const format = env.LOG_FORMAT ?? (nodeEnv === 'production' ? 'json' : 'pretty');
   if (format !== 'json' && format !== 'pretty') throw new ConfigError('LOG_FORMAT deve ser json ou pretty.');
+  const allowedOrigins = origins(env);
+  if (nodeEnv === 'production' && (!env.ALLOWED_ORIGINS || allowedOrigins.some(origin => !origin.startsWith('https://')))) {
+    throw new ConfigError('Em produção, defina ALLOWED_ORIGINS explicitamente com origens HTTPS, ex.: ["https://suporte.givovatransportes.com.br"].');
+  }
+  // Railway injects RAILWAY_* variables; its edge proxy is the only trusted hop.
+  const onRailway = Boolean(env.RAILWAY_ENVIRONMENT_NAME || env.RAILWAY_PROJECT_ID);
+  const host = env.HOST?.trim() || '::';
+  if (!/^(::|0\.0\.0\.0|127\.0\.0\.1|::1|localhost)$/.test(host)) throw new ConfigError('HOST deve ser ::, 0.0.0.0, 127.0.0.1, ::1 ou localhost.');
+  const warnings: string[] = [];
+  let databaseHost = '';
+  try {
+    databaseHost = new URL(databaseUrl).hostname;
+  } catch {
+    throw new ConfigError('DATABASE_URL inválida.');
+  }
+  if (!databaseHost) throw new ConfigError('DATABASE_URL sem host.');
+  if (onRailway && /\.(proxy\.rlwy\.net|rlwy\.net)$/.test(databaseHost)) {
+    warnings.push('DATABASE_URL usa o proxy TCP público do Railway. Em produção use a referência privada ${{Postgres.DATABASE_URL}} (host *.railway.internal) e remova o acesso público do banco.');
+  }
   return {
     env: nodeEnv,
     port: integer(env, 'PORT', 8000, 1, 65_535),
+    host,
+    shutdownGraceMs: integer(env, 'SHUTDOWN_GRACE_SECONDS', 10, 1, 120) * 1000,
     databaseUrl,
     databaseSsl: bool(env, 'DATABASE_SSL', false),
     databasePoolMax: integer(env, 'DATABASE_POOL_MAX', 10, 1, 50),
-    allowedOrigins: origins(env),
+    allowedOrigins,
     cookieSecure,
     sessionHours: integer(env, 'SESSION_HOURS', 8, 1, 72),
     timezone: timezone(env),
-    trustProxy: integer(env, 'TRUST_PROXY', 0, 0, 5),
+    trustProxy: integer(env, 'TRUST_PROXY', onRailway ? 1 : 0, 0, 5),
     loginMaxAttempts: integer(env, 'LOGIN_MAX_ATTEMPTS', 10, 3, 100),
     loginMaxAttemptsPerIp: integer(env, 'LOGIN_MAX_ATTEMPTS_PER_IP', 30, 5, 1000),
     loginWindowMs: 5 * 60_000,
@@ -161,5 +188,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     slaFirstResponseMinutes: sla(env),
     vapid: vapid(env),
     logFormat: format,
+    warnings,
   };
 }

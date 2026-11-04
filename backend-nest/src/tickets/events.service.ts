@@ -144,6 +144,13 @@ export class EventsService implements OnModuleDestroy {
     }
   }
 
+  /** Ends every stream (shutdown). Clients reconnect to another instance automatically. */
+  closeAll() {
+    this.stop();
+    for (const client of this.clients) client.res.end();
+    this.clients.clear();
+  }
+
   onModuleDestroy() {
     this.stop();
     if (this.immediate) clearTimeout(this.immediate);

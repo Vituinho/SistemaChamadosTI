@@ -4,7 +4,7 @@
  * Two buckets: ip+username (protects one account) and ip (slows password
  * spraying). Behind the cPanel PHP proxy every employee shares the proxy IP,
  * so the per-IP budget is intentionally larger. A successful login clears the
- * ip+username bucket. Process-local: run a single API instance (Render).
+ * ip+username bucket. Process-local: run a single API replica (Railway).
  */
 export class LoginRateLimiter {
   private readonly buckets = new Map<string, number[]>();

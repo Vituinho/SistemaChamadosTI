@@ -56,6 +56,6 @@ export async function createApp(options: AppModuleOptions & { logger?: LoggerSer
   app.use(cookieParser());
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new ApiExceptionFilter());
-  app.enableShutdownHooks();
+  // Signals are handled by main.ts (graceful drain before app.close()).
   return app;
 }
