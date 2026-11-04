@@ -102,6 +102,6 @@ test.describe("cPanel package: routing, headers and PHP proxy", () => {
 
   test("technician login through the proxy", async ({ page }) => {
     test.skip(!TECH_PASSWORD, "credenciais E2E ausentes");
-    await login(page);
+    await login(page, { fresh: true });
   });
 });
