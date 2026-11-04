@@ -3,14 +3,16 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "npm run build && node --env-file-if-exists=.env dist/src/main.js",
     "build": "tsc --project tsconfig.json",
-    "start": "node dist/src/main.js",
+    "start": "node --env-file-if-exists=.env dist/src/main.js",
     "test": "node --test dist/tests/*.test.js",
     "check": "npm run build && npm test",
-    "create-user": "node dist/src/create-user.js"
+    "create-user": "node --env-file-if-exists=.env dist/src/create-user.js"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
@@ -31,7 +33,6 @@
     "@types/node": "^22.15.0",
     "@types/pg": "^8.15.0",
     "@types/web-push": "^3.6.4",
-    "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }
 }
