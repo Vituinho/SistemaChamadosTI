@@ -1,21 +1,32 @@
+# Givova TI — static Next.js export + /api PHP proxy (Apache 2.4 / LiteSpeed).
 Options -Indexes -MultiViews
 DirectoryIndex index.html
 ErrorDocument 404 /404.html
+AddDefaultCharset utf-8
+AddType application/manifest+json .webmanifest
 
-<FilesMatch "(?i)(^\.|\.(env|ini|log|sql|sqlite|db|bak|pem|key|py|ts|tsx|map)$|^config\.php$)">
+# Never serve dotfiles, configuration, sources, maps or backups.
+<FilesMatch "(?i)(^\.|\.(env|ini|log|sql|sqlite|db|bak|old|orig|swp|pem|key|crt|py|ts|tsx|map|md|zip|tar|gz)$|^config\.php$)">
     Require all denied
 </FilesMatch>
 
 RewriteEngine On
-# TLS certificate must already be active in cPanel.
+
+# HTTPS only (the certificate must be active in cPanel).
 RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !=https
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L,NE]
+
 RewriteRule (^|/)\. - [F,L]
 RewriteRule ^api/config\.php$ - [F,L,NC]
+# API proxy: every /api/* request is handled by the PHP allow-list.
 RewriteRule ^api(?:/.*)?$ api/index.php [END]
-# Redirect keeps the browser fragment (#access_key), never sent to Apache.
+
+# Legacy links. The #key fragment stays in the browser across redirects.
 RewriteRule ^chamado/(GV-[0-9]+)/?$ /acompanhar/?protocol=$1 [R=302,L]
-RewriteRule ^painel/?$ /ti/ [R=302,L]
+RewriteRule ^painel/?$ /ti/ [R=302,L,QSA]
+
+# Static files and route folders (/ti -> /ti/index.html); unknown paths -> 404.
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
@@ -25,10 +36,24 @@ RewriteRule ^(.+?)/?$ $1/index.html [END]
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
     Header always set Referrer-Policy "no-referrer"
-    <FilesMatch "\.(html|txt)$|^push-sw\.js$">
+    Header always set X-Frame-Options "DENY"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    # Ignored by browsers over HTTP; no includeSubDomains (other subdomains may lack HTTPS).
+    Header always set Strict-Transport-Security "max-age=31536000"
+    # Inline scripts are allowed only by hash (computed when the package is built).
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' __CSP_SCRIPT_HASHES__; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self'; frame-src https://www.youtube-nocookie.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+    <FilesMatch "\.(html|txt|json)$|^push-sw\.js$">
         Header set Cache-Control "no-cache, must-revalidate"
     </FilesMatch>
-    <FilesMatch "\.(ico|svg|mp4)$">
-        Header set Cache-Control "public, max-age=3600"
+    <FilesMatch "\.(ico|svg|png|webmanifest)$">
+        Header set Cache-Control "public, max-age=86400"
     </FilesMatch>
+    <FilesMatch "\.mp4$">
+        Header set Cache-Control "public, max-age=604800"
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript application/javascript application/json image/svg+xml
 </IfModule>
