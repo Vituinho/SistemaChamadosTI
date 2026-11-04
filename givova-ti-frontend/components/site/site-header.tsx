@@ -20,8 +20,9 @@ export function SiteHeader() {
         Pular para o conteúdo
       </a>
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-        <Link href="/" aria-label="Givova TI — página inicial" className="rounded-lg">
+        <Link href="/" className="rounded-lg">
           <Logo />
+          <span className="sr-only"> — página inicial</span>
         </Link>
         <nav aria-label="Principal" className="flex items-center gap-1">
           {links.map(link => (

@@ -25,7 +25,7 @@ export function Timeline({ entries, newestFirst = false }: { entries: HistoryEnt
             </span>
             <p className="text-xs text-slate-600">
               <time dateTime={entry.created_at} title={formatDateTime(entry.created_at)}>{formatDateTime(entry.created_at)}</time>
-              <span className="text-slate-400"> · {formatRelative(entry.created_at)}</span>
+              <span className="text-slate-500"> · {formatRelative(entry.created_at)}</span>
             </p>
             {note ? (
               <div className="mt-1.5 rounded-xl rounded-tl-sm border border-brand-200 bg-brand-50 px-3.5 py-2.5">
