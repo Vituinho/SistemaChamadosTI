@@ -33,23 +33,18 @@ function fail(int $status, string $message): never
 
 if (!extension_loaded('curl')) fail(503, 'O servidor precisa da extensão PHP cURL.');
 
+require __DIR__ . '/upstream.php';
 $config = require __DIR__ . '/config.php';
-$backend = rtrim((string)($config['backend_url'] ?? ''), '/');
-$suffixes = (array)($config['allowed_host_suffixes'] ?? ['.onrender.com']);
-$timeout = max(5, min(55, (int)($config['timeout'] ?? 28)));
+$timeout = max(5, min(55, (int)($config['timeout'] ?? 20)));
 
-// The upstream must be https://<dns-name> with no port, path, query or credentials.
-$parts = parse_url($backend);
-$upstreamHost = strtolower((string)($parts['host'] ?? ''));
-$validHost = preg_match('~^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$~D', $upstreamHost) === 1;
-$allowedSuffix = false;
-foreach ($suffixes as $suffix) {
-    if (is_string($suffix) && $suffix !== '' && str_ends_with($upstreamHost, strtolower($suffix))) $allowedSuffix = true;
+// Fixed upstream from config.php: https + exact host allow-list (see upstream.php).
+$upstream = givova_upstream(is_array($config) ? $config : []);
+if (!$upstream['ok']) {
+    fail(503, $upstream['reason'] === 'unconfigured'
+        ? 'A API ainda não foi configurada neste pacote (staging).'
+        : 'Endereço da API inválido na configuração do proxy.');
 }
-if (($parts['scheme'] ?? '') !== 'https' || !$validHost || !$allowedSuffix || isset($parts['port']) || isset($parts['user'])
-    || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment']) || (($parts['path'] ?? '') !== '')) {
-    fail(503, 'Endereço da API inválido na configuração do proxy.');
-}
+$backend = $upstream['url'];
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $uri = $_SERVER['REQUEST_URI'] ?? '';
@@ -142,7 +137,14 @@ curl_setopt_array($curl, [
     CURLOPT_CUSTOMREQUEST => $method,
     CURLOPT_HTTPHEADER => $headers,
     CURLOPT_FOLLOWLOCATION => false,
+    CURLOPT_MAXREDIRS => 0,
     CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+    CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+    // Never route through an environment proxy (would expose cookies/keys to a third party).
+    CURLOPT_PROXY => '',
+    CURLOPT_NOPROXY => '*',
+    CURLOPT_HTTPPROXYTUNNEL => false,
+    CURLOPT_UNRESTRICTED_AUTH => false,
     CURLOPT_CONNECTTIMEOUT => 10,
     CURLOPT_TIMEOUT => $timeout,
     CURLOPT_SSL_VERIFYPEER => true,
