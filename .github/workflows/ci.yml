@@ -1,11 +1,21 @@
-name: CI — API NestJS, frontend e pacote cPanel
+name: CI — API NestJS (Railway), frontend e pacote cPanel
+
+# This workflow only builds, tests and packages. It has no deployment step, no
+# Railway token and read-only repository permissions: CI alone can never deploy.
+# Railway deploys are triggered by Railway itself (GitHub autodeploy on the
+# configured branch, ideally with "Wait for CI") — see RAILWAY.md.
 
 on:
   push:
-    branches: [refactor/nestjs-backend-cpanel-20261104]
+    branches: [main, refactor/nestjs-backend-cpanel-20261104]
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Optional: verified Railway API URL (https://<host>) to build the PRODUCTION cpanel.zip. Only reads /health and /catalog.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -43,6 +53,49 @@ jobs:
         env: { TEST_DATABASE_URL: '${{ env.PG_URL }}' }
         run: npm test
       - run: npm run build
+      - name: Dependency audit (production)
+        run: npm audit --omit=dev --audit-level=high
+
+  container:
+    name: Imagem Railway (build, health, encerramento gracioso)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: givova_ci, POSTGRES_USER: givova, POSTGRES_PASSWORD: ci_only_password }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U givova -d givova_ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the production image (same Dockerfile Railway builds)
+        run: docker build -t givova-ti-api:ci backend-nest
+      - name: Migrate a disposable database with the image
+        run: docker run --rm --network host -e DATABASE_URL="$PG_URL" givova-ti-api:ci node dist/src/cli/cli.js migrate
+      - name: Run like Railway (PORT injected, production, Railway variables)
+        run: |
+          docker run -d --name api --network host -e PORT=8123 -e NODE_ENV=production \
+            -e RAILWAY_ENVIRONMENT_NAME=ci -e RAILWAY_PROJECT_ID=ci -e DATABASE_URL="$PG_URL" \
+            -e ALLOWED_ORIGINS='["https://suporte.givovatransportes.com.br"]' givova-ti-api:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8123/health && break; sleep 1; done
+          curl -fsS localhost:8123/catalog | grep -q '"api_version":2'
+          docker exec api id -u | grep -vq '^0$'   # not root
+      - name: SIGTERM drains and exits 0
+        run: |
+          docker stop -t 20 api
+          test "$(docker inspect api --format '{{.State.ExitCode}}')" = "0"
+          docker logs api 2>&1 | grep -q 'API encerrada'
+      - if: failure()
+        run: docker logs api || true
+
+  proxy:
+    name: Proxy PHP (lint + testes da lista de hosts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          docker run --rm -v "$PWD/deploy:/d" php:8.1-cli sh -c 'for f in /d/cpanel/api/*.php; do php -l "$f"; done && php /d/tests/upstream_test.php'
+          docker run --rm -v "$PWD/deploy:/d" php:8.3-cli php /d/tests/upstream_test.php
 
   schema-compat:
     name: Baseline SQL = migrations Alembic 0001–0005
@@ -74,8 +127,65 @@ jobs:
           pg pg_dump -h localhost -U givova -d baseline_check --schema-only --no-owner --no-privileges | norm > baseline.sql
           diff -u alembic.sql baseline.sql
 
+  migration-rehearsal:
+    name: Ensaio da transferência de dados (legado → banco vazio → API)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: givova_ci, POSTGRES_USER: givova, POSTGRES_PASSWORD: ci_only_password }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U givova -d givova_ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: ci_only_password
+      SOURCE_URL: postgresql://givova:ci_only_password@localhost:5432/legacy_source
+      TARGET_URL: postgresql://givova:ci_only_password@localhost:5432/railway_target
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python -m pip install -r backend/requirements.lock.txt
+      - name: Source database in the legacy format (real Alembic + legacy data)
+        run: |
+          docker run --rm --network host -e PGPASSWORD postgres:16 psql -h localhost -U givova -d givova_ci -c "CREATE DATABASE legacy_source" -c "CREATE DATABASE railway_target"
+          (cd backend && DATABASE_URL=postgresql+psycopg://givova:ci_only_password@localhost:5432/legacy_source python -m alembic upgrade head)
+          docker run --rm -i --network host -e PGPASSWORD postgres:16 psql -v ON_ERROR_STOP=1 -h localhost -U givova -d legacy_source < backend-nest/test/fixtures/legacy-data.sql
+      - name: Build the CLI
+        working-directory: backend-nest
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Transfer and verify (same script as the production runbook)
+        working-directory: backend-nest
+        env:
+          PG_DUMP: docker run --rm -i --network host postgres:16 pg_dump
+          PG_RESTORE: docker run --rm -i --network host postgres:16 pg_restore
+          PSQL: docker run --rm -i --network host postgres:16 psql
+        run: bash scripts/transfer-database.sh
+      - name: A second run must refuse the non-empty target
+        working-directory: backend-nest
+        env:
+          PG_DUMP: docker run --rm -i --network host postgres:16 pg_dump
+          PG_RESTORE: docker run --rm -i --network host postgres:16 pg_restore
+          PSQL: docker run --rm -i --network host postgres:16 psql
+        run: |
+          set +e; bash scripts/transfer-database.sh; code=$?; set -e
+          test "$code" = "4"
+      - name: The API image serves the transferred data (legacy password hash, protocols)
+        run: |
+          docker build -q -t givova-ti-api:ci backend-nest
+          docker run -d --name api --network host -e PORT=8124 -e NODE_ENV=production -e RAILWAY_PROJECT_ID=ci \
+            -e DATABASE_URL="$TARGET_URL" -e ALLOWED_ORIGINS='["https://suporte.givovatransportes.com.br"]' givova-ti-api:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8124/health && break; sleep 1; done
+          curl -fsS -c jar -H 'Origin: https://suporte.givovatransportes.com.br' -H 'Content-Type: application/json' \
+            -d '{"username":"legado","password":"legacy-password-for-tests"}' localhost:8124/auth/login
+          curl -fsS -b jar localhost:8124/tickets > tickets.json
+          node -e "const t=require('./tickets.json'); if (t.total !== 4 || t.items.map(i => i.protocol).join() !== 'GV-000001,GV-000002,GV-000003,GV-000005') { console.error(t); process.exit(1) }"
+          curl -fsS -o /dev/null -b jar localhost:8124/tickets/1/attachment
+
   web:
-    name: Frontend (lint, tipos, testes) e cpanel.zip
+    name: Frontend (lint, tipos, testes) e pacote cPanel de staging
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -88,22 +198,24 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - name: Build static export and package cpanel.zip
+      - name: Dependency audit (production)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Build static export and package cpanel-staging.zip (no API wired)
         run: npm run build:cpanel
       - uses: actions/upload-artifact@v4
         with:
-          name: cpanel
+          name: cpanel-staging
           path: |
-            dist/cpanel.zip
-            dist/cpanel.zip.sha256
-            dist/cpanel-manifest.json
+            dist/cpanel-staging.zip
+            dist/cpanel-staging.zip.sha256
+            dist/cpanel-staging-manifest.json
             CPANEL.md
           retention-days: 30
           if-no-files-found: error
 
   e2e-cpanel:
-    name: E2E — cpanel.zip em Apache/PHP com API NestJS e FastAPI legada
-    needs: [api, web]
+    name: E2E — pacote cPanel em Apache/PHP com a imagem da API e a FastAPI legada
+    needs: [api, web, container, proxy]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -120,9 +232,9 @@ jobs:
         with: { python-version: '3.12' }
       # The artifact root is the repository root (it holds dist/ and CPANEL.md).
       - uses: actions/download-artifact@v4
-        with: { name: cpanel, path: . }
+        with: { name: cpanel-staging, path: . }
       - name: Verify downloaded package checksum
-        run: cd dist && sha256sum -c cpanel.zip.sha256
+        run: cd dist && sha256sum -c cpanel-staging.zip.sha256
       - name: Install dependencies
         run: |
           npm ci --prefix backend-nest --no-audit --no-fund && npm run --prefix backend-nest build
@@ -133,26 +245,27 @@ jobs:
         run: |
           docker run --rm --network host -e PGPASSWORD postgres:16 psql -h localhost -U givova -d givova_ci -c "CREATE DATABASE e2e_nest" -c "CREATE DATABASE e2e_legacy"
           echo "E2E_TECH_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(15).toString('base64url'))")" >> "$GITHUB_ENV"
-      - name: Start NestJS API (:8001) and legacy FastAPI (:8002)
+      - name: Start the API image (:8001) and legacy FastAPI (:8002)
         run: |
           export DATABASE_URL=postgresql://givova:ci_only_password@localhost:5432/e2e_nest
           node backend-nest/dist/src/cli/cli.js migrate
           printf 'e2e-tecnico\nTécnico E2E\n' | GIVOVA_PASSWORD="$E2E_TECH_PASSWORD" node backend-nest/dist/src/cli/cli.js create-user
-          NODE_ENV=production PORT=8001 COOKIE_SECURE=true LOG_FORMAT=json ALLOWED_ORIGINS='["https://suporte-nest.givova.test"]' \
-            nohup node backend-nest/dist/src/main.js > nest.log 2>&1 &
+          docker build -q -t givova-ti-api:ci backend-nest
+          docker run -d --name api --network host -e PORT=8001 -e NODE_ENV=production -e RAILWAY_PROJECT_ID=ci \
+            -e DATABASE_URL="$DATABASE_URL" -e ALLOWED_ORIGINS='["https://suporte-nest.givova.test"]' givova-ti-api:ci
           (cd backend && DATABASE_URL=postgresql+psycopg://givova:ci_only_password@localhost:5432/e2e_legacy python -m alembic upgrade head)
           HASH=$(cd backend-nest && node -e "require('./dist/src/auth/passwords').hashPassword(process.argv[1]).then(h=>process.stdout.write(h))" "$E2E_TECH_PASSWORD")
           docker run --rm --network host -e PGPASSWORD=ci_only_password postgres:16 psql -h localhost -U givova -d e2e_legacy -c "INSERT INTO technicians (username, name, password_hash) VALUES ('e2e-tecnico', 'Técnico E2E', '$HASH')"
           (cd backend && DATABASE_URL=postgresql+psycopg://givova:ci_only_password@localhost:5432/e2e_legacy ALLOWED_ORIGINS='["https://suporte-legacy.givova.test"]' COOKIE_SECURE=true \
             nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8002 > ../legacy.log 2>&1 &)
           for i in $(seq 1 30); do curl -fsS localhost:8001/health && curl -fsS localhost:8002/health && break; sleep 2; done
-      - name: Apache/PHP stack serving the extracted cpanel.zip
+      - name: Apache/PHP stack serving the extracted package
         working-directory: givova-ti-frontend
         run: |
           node e2e/cpanel/prepare.mjs
           docker compose -f e2e/cpanel/docker-compose.yml up -d
           for i in $(seq 1 30); do curl -fsSk --resolve suporte-nest.givova.test:8443:127.0.0.1 https://suporte-nest.givova.test:8443/api/health && break; sleep 2; done
-      - name: Playwright (routing, headers, proxy, lifecycle, a11y, responsive)
+      - name: Playwright (routing, headers, proxy, staging package, lifecycle, a11y, responsive)
         working-directory: givova-ti-frontend
         run: |
           docker compose -f e2e/cpanel/docker-compose.yml --profile test run --rm \
@@ -161,8 +274,36 @@ jobs:
       - name: Logs
         if: failure()
         run: |
-          tail -n 100 nest.log legacy.log || true
+          docker logs api --tail 100 || true
+          tail -n 100 legacy.log || true
           docker compose -f givova-ti-frontend/e2e/cpanel/docker-compose.yml logs --tail 100 || true
       - uses: actions/upload-artifact@v4
         if: failure()
         with: { name: playwright-report, path: givova-ti-frontend/playwright-report, retention-days: 14 }
+
+  package-production:
+    name: Pacote cPanel de PRODUÇÃO (manual, API verificada)
+    if: github.event_name == 'workflow_dispatch' && inputs.api_url != ''
+    needs: [e2e-cpanel, migration-rehearsal, schema-compat]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: givova-ti-frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: givova-ti-frontend/package-lock.json }
+      - run: npm ci --no-audit --no-fund
+      - name: Verify the API (GET /health, /catalog) and package cpanel.zip
+        env: { API_URL: '${{ inputs.api_url }}' }
+        run: npm run build:cpanel -- --api-url "$API_URL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpanel-production
+          path: |
+            dist/cpanel.zip
+            dist/cpanel.zip.sha256
+            dist/cpanel-manifest.json
+            CPANEL.md
+          retention-days: 30
+          if-no-files-found: error
