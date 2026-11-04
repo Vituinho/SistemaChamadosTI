@@ -5,11 +5,12 @@ Sistema interno da Givova Transportes para abrir, acompanhar e atender chamados 
 | Parte | Tecnologia | Pasta | Hospedagem |
 | --- | --- | --- | --- |
 | Frontend | Next.js 16 (App Router, export estático), React 19, TypeScript estrito, Tailwind CSS 4, Radix/shadcn, Lucide, TanStack Query | `givova-ti-frontend/` | cPanel (`dist/cpanel.zip`) |
-| API | Node.js 22, NestJS 11, PostgreSQL (`pg`) | `backend-nest/` | Render |
+| API | Node.js 22, NestJS 11, PostgreSQL (`pg`) | `backend-nest/` | Railway (imagem Docker) |
+| Banco | PostgreSQL | — | Railway (rede privada) |
 | Proxy | PHP 8.1+ (mesma origem, lista de rotas) | `deploy/cpanel/` | cPanel |
-| API legada (rollback) | Python/FastAPI + Alembic | `backend/` | Render (atual) |
+| API legada (referência/rollback) | Python/FastAPI + Alembic | `backend/` | Render (fora do ar desde 04/11/2026) |
 
-Documentos: [API NestJS](backend-nest/README.md) · [Publicação no cPanel](CPANEL.md) · [Relatório da modernização](RELATORIO_MODERNIZACAO.md) · histórico: [Auditoria V1](AUDITORIA.md), [Relatório V1](RELATORIO_V1.md).
+Documentos: [Railway](RAILWAY.md) · [API NestJS](backend-nest/README.md) · [Publicação no cPanel](CPANEL.md) · [Relatório da modernização](RELATORIO_MODERNIZACAO.md) · histórico: [Auditoria V1](AUDITORIA.md), [Relatório V1](RELATORIO_V1.md).
 
 ## Como funciona
 

@@ -167,3 +167,24 @@ Legenda: ✅ concluído e verificado por teste automatizado · ☑️ concluído
 **Compatibilidade do banco.** Sem novas migrations nesta revisão. A 0006 continua aditiva (colunas com default + índices + `CHECK` em `kind` aceitando o valor padrão usado pelo FastAPI); o rollback para o FastAPI segue possível sem reverter migrations.
 
 **Investigação da API do Render (somente leitura).** DNS resolve para a borda do Render (GCP us-west1 via Cloudflare); TCP e TLS completam em ~60 ms e a requisição é aceita, mas **nenhum byte de resposta** chega em 70 s — em qualquer caminho, inclusive inexistentes (que o app responderia com 404 imediatamente). Um host `*.onrender.com` inexistente responde em 0,65 s com `404 x-render-routing: no-server`, logo **o serviço existe** (não foi apagado). A página de status do Render indica "All Systems Operational" (não é incidente da plataforma). Conclusão provável: a instância do serviço **não consegue ficar saudável na inicialização** e o proxy do Render segura as requisições. O comando de início do serviço executa `alembic upgrade head` antes do Uvicorn; se o PostgreSQL estiver inacessível (por exemplo, banco gratuito do Render expirado — expira 30 dias após a criação), a inicialização trava ou reinicia em ciclo. **Confirme no painel do Render**: *Events* e *Logs* do serviço e o status/data de expiração do banco. Nada foi reiniciado, reconfigurado ou implantado.
+
+## 11. Mudança de hospedagem: Render → Railway (04/11/2026)
+
+Decisão: API NestJS e PostgreSQL no **Railway**; frontend estático continua no cPanel. Detalhes operacionais em [RAILWAY.md](RAILWAY.md).
+
+**Preparado e testado (sem credenciais de produção):**
+- `backend-nest/Dockerfile` (Node 22.23.4, `npm ci`, usuário sem privilégios, `node` como PID 1). O formato `railway.json` não foi usado: está depreciado e não é aceito por serviços novos.
+- Escuta em `::` (IPv6+IPv4) com recuo para IPv4; `PORT` do Railway; `TRUST_PROXY=1` automático no Railway; produção exige `ALLOWED_ORIGINS` HTTPS explícitas; aviso se o banco for acessado pelo proxy TCP público.
+- Encerramento gracioso: SIGTERM → `/health` 503, sem novas conexões, transmissões encerradas, requisições em andamento concluídas, pool fechado, saída 0 (testado com `docker stop`: 1,2 s).
+- Banco: `DATABASE_URL=${{Postgres.DATABASE_URL}}` (rede privada, sem acesso público). Migrations manuais, nunca no build/start, para não criar um banco "vazio porém migrado" antes da restauração.
+- `cli db-report` (somente leitura) e `scripts/transfer-database.sh` (origem → destino **vazio**, comparação de contagens, IDs, sequências e *fingerprints*, migrations, nova comparação). Ensaiado localmente e no CI com banco criado pelo Alembic real + dados legados: idêntico em 18 verificações, só a 0006 aplicada, segunda execução recusada; a imagem da API serve os dados transferidos (login com hash legado, protocolos originais, anexo, sequência continuando em GV-000008).
+- Proxy PHP: lista **exata** de hosts em `config.php` (sem sufixos/curingas), recusa IPs, `localhost`, `*.internal`, portas, caminhos, credenciais e caracteres de controle; cURL sem proxy de ambiente e sem redirecionamentos. 22 testes PHP (8.1 e 8.3).
+- Empacotador: `cpanel.zip` de **produção** só com `--api-url` verificada ao vivo; sem isso gera `cpanel-staging.zip` (proxy responde 503) identificado em `build.json`.
+- CI: imagem Docker + health + SIGTERM, testes do proxy PHP, ensaio da transferência de dados, E2E com a imagem da API; sem tokens e sem etapa de deploy.
+
+**Resultados locais (worktree, sem push):** API 73/73; frontend lint, tipos, 27/27; PHP 22/22; E2E 40/40 (imagem da API e FastAPI legada); ensaio de transferência aprovado.
+
+**Bloqueios:**
+1. **Dados do Render.** Pela documentação do Render, banco Free expira em 30 dias, tem 14 dias de carência para upgrade e depois é apagado; Free não tem backups. O estado do banco só pode ser visto no painel do Render. Sem um dump/backup, os chamados antigos **não** podem ser migrados.
+2. Projeto Railway ainda não criado; domínio da API desconhecido → apenas o pacote **staging** foi gerado. O `cpanel.zip` de produção depende da API publicada e verificada.
+3. O pacote hoje publicado no cPanel só aceita `*.onrender.com`; é preciso publicar o pacote novo para usar o Railway.

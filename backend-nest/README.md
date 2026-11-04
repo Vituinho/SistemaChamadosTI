@@ -34,7 +34,9 @@ Copie `.env.example` para `.env` (nunca versione). Principais variáveis:
 | `ALLOWED_ORIGINS` | `["http://localhost:3000"]` | Lista JSON de origens do frontend (CORS + verificação de escrita). |
 | `COOKIE_SECURE` | `true` | Obrigatório `true` com `NODE_ENV=production`. |
 | `SESSION_HOURS` | `8` | Duração fixa da sessão (1–72). |
-| `TRUST_PROXY` | `0` | Número de proxies confiáveis à frente da API (Render: `1`). |
+| `TRUST_PROXY` | `0` (`1` no Railway) | Número de proxies confiáveis à frente da API. No Railway o padrão é `1` (detectado pelas variáveis `RAILWAY_*`). |
+| `HOST` | `::` | Endereço de escuta (IPv6 + IPv4; cai para `0.0.0.0` se não houver IPv6). |
+| `SHUTDOWN_GRACE_SECONDS` | `10` | Tempo para concluir requisições após SIGTERM (mantenha abaixo de `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`). |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_MAX_ATTEMPTS_PER_IP` | `10` / `30` | Janela de 5 min. |
 | `SLA_FIRST_RESPONSE_MINUTES` | *(não definido)* | **Opcional.** Metas de 1º atendimento em minutos para as quatro prioridades, ex.: `{"URGENTE":15,"ALTA":30,"NORMAL":120,"BAIXA":480}` (apenas exemplo, não é política aprovada). Sem a variável, nenhum chamado é marcado como "Atrasado". |
 | `TICKET_CREATE_MAX_PER_IP` | `60` | Chamados abertos por IP a cada 10 min (o endpoint é público). Atrás do proxy do cPanel todos compartilham um IP. |
@@ -56,6 +58,7 @@ npm run cli -- create-user
 npm run cli -- reset-password <usuario>   # também encerra as sessões do usuário
 npm run cli -- revoke-sessions <usuario>
 npm run cli -- list-users
+npm run cli -- db-report [--json]          # somente leitura: contagens e fingerprints
 ```
 
 Senhas são pedidas sem eco no terminal (ou via `GIVOVA_PASSWORD` em scripts) e nunca aceitas como argumento de linha de comando.
@@ -88,12 +91,25 @@ TEST_DATABASE_URL=postgresql://usuario:senha@localhost:5432/banco_descartavel np
 
 Os testes de integração criam um schema `test_<aleatório>` por suíte e o removem ao final. Sem `TEST_DATABASE_URL` eles aparecem como *skipped*. **Nunca** aponte para produção.
 
-## Deploy no Render e troca segura (cutover)
+## Deploy no Railway
 
-1. **Backup** do PostgreSQL de produção (`pg_dump -Fc`), incluindo anexos e histórico. Teste a restauração em um banco descartável.
-2. Crie um **novo** Web Service Node (não substitua o Python ainda): root `backend-nest`, build `npm ci && npm run build`, start `npm start`, health check `/health`.
-3. Variáveis: `NODE_ENV=production`, `DATABASE_URL` (a mesma do serviço atual), `DATABASE_SSL` conforme a conexão, `TRUST_PROXY=1`, `COOKIE_SECURE=true`, `ALLOWED_ORIGINS=["https://suporte.givovatransportes.com.br"]`, e as **mesmas** chaves `VAPID_*` do serviço atual.
-4. Em um shell do serviço: `npm run migrate -- --dry-run` (deve listar só `0006…`), depois `npm run migrate`.
-5. Valide `GET /health` e `GET /catalog` (deve conter `"api_version":2`). Faça login com um técnico existente.
-6. No cPanel, altere `api/config.php` → `backend_url` para a URL do novo serviço. Teste abrir, assumir e resolver um chamado de teste.
-7. Rollback: volte `backend_url` para o serviço Python. A migration 0006 não impede o FastAPI de funcionar (colunas novas têm default); apenas mensagens da TI aparecem sem o nome do autor.
+Passo a passo completo (serviços, variáveis, transferência dos dados, validação, rollback e custos) em [../RAILWAY.md](../RAILWAY.md). Resumo:
+
+- Root Directory `/backend-nest`; o Railway constrói o `Dockerfile` (Node 22.23.4, `npm ci`, usuário sem privilégios, `node` como PID 1).
+- `DATABASE_URL=${{Postgres.DATABASE_URL}}` (rede privada), healthcheck `/health`, 1 réplica, Serverless desligado, `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=20`.
+- Migrations **nunca** rodam no build/start: `node dist/src/cli/cli.js migrate` pelo túnel `railway connect Postgres --tunnel-only`, depois de restaurar os dados.
+- Encerramento gracioso: ao receber SIGTERM o `/health` passa a 503, conexões novas são recusadas, transmissões ao vivo terminam e as requisições em andamento têm até `SHUTDOWN_GRACE_SECONDS` (padrão 10) antes de o pool do banco fechar.
+
+### Transferência de dados
+
+`scripts/transfer-database.sh` copia um banco de origem para um destino **vazio** e prova a cópia com `cli db-report` (contagens, IDs, sequências e *fingerprints*), aplica as migrations aditivas e confere de novo. Recusa destinos não vazios. O mesmo script é ensaiado no CI com um banco criado pelo Alembic real e dados no formato legado (`test/fixtures/legacy-data.sql`).
+
+```bash
+npm run build
+DATABASE_URL=... node dist/src/cli/cli.js db-report        # somente leitura
+SOURCE_URL=... TARGET_URL=... bash scripts/transfer-database.sh
+```
+
+### Rollback
+
+Railway → *Deployments* → *Rollback*. As migrations são aditivas (o backend FastAPI de `../backend` continua compatível com o schema). Faça backup (`pg_dump -Fc`) antes de qualquer mudança no banco.
