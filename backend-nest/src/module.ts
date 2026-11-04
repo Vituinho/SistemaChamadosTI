@@ -1,4 +1,4 @@
-import { Module, Controller, Get, Post, Req, Res, UseGuards, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Module, Controller, Get, Post, Req, Res, UseGuards, HttpCode, ServiceUnavailableException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Database } from './db';
 import { AuthRequest, AuthService, TechnicianGuard } from './auth';
@@ -20,6 +20,7 @@ class RootController {
   @Get('departments')
   departments() { return departments; }
   @Post('auth/login')
+  @HttpCode(200)
   async login(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.auth.login(req.body, req, res);
   }
@@ -27,6 +28,7 @@ class RootController {
   @UseGuards(TechnicianGuard)
   me(@Req() req: AuthRequest) { return req.technician; }
   @Post('auth/logout')
+  @HttpCode(200)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.auth.logout(req, res);
   }
@@ -34,12 +36,15 @@ class RootController {
   @UseGuards(TechnicianGuard)
   pushConfig() { return this.push.config(); }
   @Post('push/subscribe')
+  @HttpCode(200)
   @UseGuards(TechnicianGuard)
   subscribe(@Req() req: AuthRequest) { return this.push.subscribe(req.body, req.technician!.id); }
   @Post('push/unsubscribe')
+  @HttpCode(200)
   @UseGuards(TechnicianGuard)
   unsubscribe(@Req() req: AuthRequest) { return this.push.unsubscribe(req.body, req.technician!.id); }
   @Post('push/test')
+  @HttpCode(200)
   @UseGuards(TechnicianGuard)
   test(@Req() req: AuthRequest) { return this.push.test(req.technician!.id); }
 }

@@ -1,5 +1,5 @@
 import {
-  BadRequestException, ConflictException, Controller, Get, Headers, Injectable, NotFoundException, Patch, Post,
+  BadRequestException, ConflictException, Controller, Get, Headers, HttpCode, Injectable, NotFoundException, Patch, Post,
   Query, Req, Res, ServiceUnavailableException, UploadedFile, UseGuards, UseInterceptors,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -253,12 +253,14 @@ export class TicketsController {
   @UseGuards(TechnicianGuard)
   async history(@Req() req: Request) { return this.service.history(validId(req.params.id as string)); }
   @Post('tickets/:id/assign')
+  @HttpCode(200)
   @UseGuards(TechnicianGuard)
   async assign(@Req() req: AuthRequest) { return this.service.assign(validId(req.params.id as string), req.technician!); }
   @Patch('tickets/:id')
   @UseGuards(TechnicianGuard)
   async update(@Req() req: AuthRequest) { return this.service.update(validId(req.params.id as string), req.body, req.technician!); }
   @Post('tickets/:id/resolve')
+  @HttpCode(200)
   @UseGuards(TechnicianGuard)
   async resolve(@Req() req: AuthRequest) { return this.service.resolve(validId(req.params.id as string), req.body, req.technician!); }
   @Get('tickets/:id/attachment')
