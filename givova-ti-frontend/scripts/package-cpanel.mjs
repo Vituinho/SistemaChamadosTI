@@ -58,13 +58,16 @@ function build() {
   execFileSync(process.execPath, [nextBin, "build"], { cwd: FRONTEND, stdio: "inherit", env: { ...process.env, CPANEL_EXPORT: "1", NEXT_TELEMETRY_DISABLED: "1" } });
 }
 
-function gitCommit() {
+function git(args, fallback) {
   try {
-    return execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+    return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
   } catch {
-    return "desconhecido";
+    return fallback;
   }
 }
+const gitCommit = () => git(["rev-parse", "--short", "HEAD"], "desconhecido");
+/** Commit date (not "now") keeps build.json identical for rebuilds of the same commit. */
+const commitDate = () => git(["log", "-1", "--format=%cI"], new Date().toISOString());
 
 /** sha256 hashes of every inline <script> (Next.js bootstrap/RSC payload) for the CSP. */
 function inlineScriptHashes(files) {
@@ -105,7 +108,7 @@ function main() {
   if (!htaccess.includes("__CSP_SCRIPT_HASHES__")) throw new Error(".htaccess sem o marcador __CSP_SCRIPT_HASHES__");
   files.set(".htaccess", Buffer.from(htaccess.replace("__CSP_SCRIPT_HASHES__", hashes.join(" ")), "utf8"));
 
-  files.set("build.json", Buffer.from(JSON.stringify({ app: "givova-ti", commit: gitCommit(), built_at: new Date().toISOString(), api: "/api (proxy PHP)" }, null, 2) + "\n"));
+  files.set("build.json", Buffer.from(JSON.stringify({ app: "givova-ti", commit: gitCommit(), commit_date: commitDate(), api: "/api (proxy PHP)" }, null, 2) + "\n"));
 
   const problems = [];
   for (const [name, data] of files) {
@@ -138,6 +141,7 @@ function main() {
   const size = statSync(target).size;
   const manifest = { file: "cpanel.zip", bytes: size, sha256, files: names.length, csp_script_hashes: hashes.length, commit: gitCommit() };
   writeFileSync(join(outDir, "cpanel-manifest.json"), JSON.stringify({ ...manifest, entries: names }, null, 2) + "\n");
+  writeFileSync(join(outDir, "cpanel.zip.sha256"), `${sha256}  cpanel.zip\n`);
   log(`✓ ${target}`);
   log(`  ${(size / 1024 / 1024).toFixed(2)} MiB · ${names.length} arquivos · ${hashes.length} hashes CSP`);
   log(`  sha256 ${sha256}`);
