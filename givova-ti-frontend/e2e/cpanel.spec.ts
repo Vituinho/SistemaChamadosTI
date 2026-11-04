@@ -58,8 +58,20 @@ test.describe("cPanel package: routing, headers and PHP proxy", () => {
     expect((await request.get(script)).headers()["cache-control"]).toContain("immutable");
   });
 
+  test("the unconfigured staging package serves pages but refuses /api with 503", async ({ request }) => {
+    const base = "https://suporte-unconfigured.givova.test";
+    expect((await request.get(`${base}/chamado/`)).status()).toBe(200);
+    const build = await (await request.get(`${base}/build.json`)).json();
+    expect(build.channel).toBe("staging");
+    expect(build.api_upstream).toBeNull();
+    const health = await request.get(`${base}/api/health`);
+    expect(health.status()).toBe(503);
+    expect((await health.json()).detail).toMatch(/não foi configurada neste pacote \(staging\)/);
+    expect((await request.get(`${base}/api/upstream.php`)).status()).toBe(403);
+  });
+
   test("internal files are never served", async ({ request }) => {
-    for (const path of ["/api/config.php", "/.htaccess", "/.user.ini", "/api/.htaccess", "/_next/.htaccess"]) {
+    for (const path of ["/api/config.php", "/api/upstream.php", "/.htaccess", "/.user.ini", "/api/.htaccess", "/_next/.htaccess"]) {
       expect((await request.get(path, { maxRedirects: 0 })).status(), path).toBe(403);
     }
   });

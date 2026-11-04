@@ -14,7 +14,7 @@ services:
     extra_hosts: ["host.docker.internal:host-gateway"]
     networks:
       e2e:
-        aliases: [givova-e2e-nest.onrender.com, givova-e2e-legacy.onrender.com]
+        aliases: [givova-e2e-nest.up.railway.app, givova-e2e-legacy.up.railway.app]
   apache:
     image: php:8.3-apache
     depends_on: [tls]
@@ -27,13 +27,14 @@ services:
     volumes:
       - ../.work/site-nest:/var/www/nest:ro
       - ../.work/site-legacy:/var/www/legacy:ro
+      - ../.work/site-unconfigured:/var/www/unconfigured:ro
       - ../.work/certs:/certs:ro
       - ./apache-sites.conf:/etc/apache2/sites-enabled/000-default.conf:ro
       - ./php-cpanel.ini:/usr/local/etc/php/conf.d/zz-cpanel.ini:ro
     ports: ["8443:443", "8080:80"]
     networks:
       e2e:
-        aliases: [suporte-nest.givova.test, suporte-legacy.givova.test]
+        aliases: [suporte-nest.givova.test, suporte-legacy.givova.test, suporte-unconfigured.givova.test]
   playwright:
     image: mcr.microsoft.com/playwright:v1.63.0-noble
     profiles: [test]
