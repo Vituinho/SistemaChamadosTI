@@ -20,6 +20,7 @@ export type Status = (typeof STATUSES)[number];
 export type Priority = (typeof PRIORITIES)[number];
 
 export const OPEN_STATUSES: readonly Status[] = ['NOVO', 'EM_ATENDIMENTO', 'AGUARDANDO_USUARIO', 'AGUARDANDO_TERCEIRO'];
+export const WAITING_STATUSES: readonly Status[] = ['AGUARDANDO_USUARIO', 'AGUARDANDO_TERCEIRO'];
 export const CLOSED_STATUSES: readonly Status[] = ['RESOLVIDO', 'CANCELADO'];
 export const RESOLVABLE_STATUSES: readonly Status[] = ['EM_ATENDIMENTO', 'AGUARDANDO_USUARIO', 'AGUARDANDO_TERCEIRO'];
 

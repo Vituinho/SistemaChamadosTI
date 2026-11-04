@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { OPEN_STATUSES, CLOSED_STATUSES, type Priority, type Status } from '../common/catalog';
+import { CLOSED_STATUSES, OPEN_STATUSES, WAITING_STATUSES, type Priority, type Status } from '../common/catalog';
 import { DatabaseService, type Queryable } from '../database/database.service';
 import { SchemaService } from '../database/schema.service';
 import type { ListTicketsQuery } from './dto/ticket.dto';
@@ -124,6 +124,7 @@ export class TicketsRepository {
       if (value) clauses.push(`t.${field} = ${bind(value)}`);
     }
     if (query.scope === 'open') clauses.push(`t.status = ANY(${bind(OPEN_STATUSES)})`);
+    if (query.scope === 'waiting') clauses.push(`t.status = ANY(${bind(WAITING_STATUSES)})`);
     if (query.scope === 'closed') clauses.push(`t.status = ANY(${bind(CLOSED_STATUSES)})`);
     if (query.assigned === 'me') clauses.push(`t.technician_id = ${bind(technicianId)}`);
     if (query.assigned === 'none') clauses.push('t.technician_id IS NULL');

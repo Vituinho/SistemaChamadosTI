@@ -52,7 +52,7 @@ export class AddNoteDto {
 }
 
 export const SORTS = ['oldest', 'newest', 'priority', 'activity'] as const;
-export const SCOPES = ['all', 'open', 'closed'] as const;
+export const SCOPES = ['all', 'open', 'waiting', 'closed'] as const;
 export type Sort = (typeof SORTS)[number];
 export type Scope = (typeof SCOPES)[number];
 

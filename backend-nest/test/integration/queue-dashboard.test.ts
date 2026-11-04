@@ -67,6 +67,7 @@ describe('queue filters, pagination and dashboard metrics', { skip: skipReason }
     assert.deepEqual((await q('affected_system=Frete%20Br%C3%A1s')).items.map(i => i.id), [ids[1]]);
     assert.equal((await q('scope=open')).total, 4);
     assert.deepEqual((await q('scope=closed')).items.map(i => i.id), [ids[0]]);
+    assert.deepEqual((await q('scope=waiting')).items.map(i => i.id), [ids[2]]);
     assert.equal((await q('assigned=me&scope=open')).total, 2);
     assert.equal((await bruno.get('/tickets?assigned=me')).body.total, 0);
     assert.deepEqual((await q('assigned=none')).items.map(i => i.id), [ids[3], ids[4]]);

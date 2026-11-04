@@ -23,21 +23,34 @@ function databaseConfig() {
   return { databaseUrl, databaseSsl: process.env.DATABASE_SSL === 'true', databasePoolMax: 2 };
 }
 
-function ask(question: string, hidden = false): Promise<string> {
-  return new Promise(resolve => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    if (hidden) {
-      const output = rl as unknown as { _writeToOutput: (text: string) => void };
-      output._writeToOutput = (text: string) => {
-        if (text.includes(question)) process.stdout.write(text);
-      };
-    }
-    rl.question(question, answer => {
-      rl.close();
-      if (hidden) process.stdout.write('\n');
-      resolve(answer);
-    });
-  });
+/**
+ * One readline for the whole session. Lines are consumed through the async
+ * iterator, which buffers them, so piped input (scripts) is never lost.
+ */
+let prompt: { rl: ReturnType<typeof createInterface>; lines: AsyncIterator<string>; muted: boolean } | null = null;
+
+async function ask(question: string, hidden = false): Promise<string> {
+  if (!prompt) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: Boolean(process.stdin.isTTY) });
+    const state = { rl, lines: rl[Symbol.asyncIterator](), muted: false };
+    const internal = rl as unknown as { _writeToOutput: (text: string) => void };
+    const original = internal._writeToOutput.bind(rl);
+    // Hide typed characters of passwords on interactive terminals.
+    internal._writeToOutput = (text: string) => (state.muted ? undefined : original(text));
+    prompt = state;
+  }
+  process.stdout.write(question);
+  prompt.muted = hidden && Boolean(process.stdin.isTTY);
+  const { value, done } = await prompt.lines.next();
+  if (prompt.muted || !process.stdin.isTTY) process.stdout.write('\n');
+  prompt.muted = false;
+  if (done) throw new Error('Entrada encerrada antes de concluir. Nada foi gravado.');
+  return value;
+}
+
+function closePrompt() {
+  prompt?.rl.close();
+  prompt = null;
 }
 
 async function readPassword(): Promise<string> {
@@ -132,6 +145,7 @@ async function main() {
         process.exitCode = command ? 1 : 0;
     }
   } finally {
+    closePrompt();
     await pool.end();
   }
 }
