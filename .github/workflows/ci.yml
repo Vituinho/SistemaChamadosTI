@@ -1,0 +1,163 @@
+name: CI — API NestJS, frontend e pacote cPanel
+
+on:
+  push:
+    branches: [refactor/nestjs-backend-cpanel-20261104]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  # Disposable CI database only. Never a production URL.
+  PG_URL: postgresql://givova:ci_only_password@localhost:5432/givova_ci
+
+jobs:
+  api:
+    name: API (TypeScript + testes com PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: givova_ci, POSTGRES_USER: givova, POSTGRES_PASSWORD: ci_only_password }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U givova -d givova_ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend-nest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: backend-nest/package-lock.json }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Unit + integration tests (isolated schemas)
+        env: { TEST_DATABASE_URL: '${{ env.PG_URL }}' }
+        run: npm test
+      - run: npm run build
+
+  schema-compat:
+    name: Baseline SQL = migrations Alembic 0001–0005
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: givova_ci, POSTGRES_USER: givova, POSTGRES_PASSWORD: ci_only_password }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U givova -d givova_ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: python -m pip install -r backend/requirements.lock.txt
+      - name: Legacy Alembic schema
+        working-directory: backend
+        env: { DATABASE_URL: 'postgresql+psycopg://givova:ci_only_password@localhost:5432/givova_ci' }
+        run: python -m alembic upgrade head
+      - name: Baseline schema and comparison
+        env: { PGPASSWORD: ci_only_password }
+        run: |
+          pg() { docker run --rm --network host -e PGPASSWORD postgres:16 "$@"; }
+          pg psql -h localhost -U givova -d givova_ci -c "CREATE DATABASE baseline_check"
+          docker run --rm -i --network host -e PGPASSWORD postgres:16 psql -v ON_ERROR_STOP=1 -h localhost -U givova -d baseline_check < backend-nest/migrations/0000_baseline.sql
+          norm() { grep -vE '^(\\(un)?restrict|--)' | grep -v '^$'; }
+          pg pg_dump -h localhost -U givova -d givova_ci --schema-only --no-owner --no-privileges | norm > alembic.sql
+          pg pg_dump -h localhost -U givova -d baseline_check --schema-only --no-owner --no-privileges | norm > baseline.sql
+          diff -u alembic.sql baseline.sql
+
+  web:
+    name: Frontend (lint, tipos, testes) e cpanel.zip
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: givova-ti-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm, cache-dependency-path: givova-ti-frontend/package-lock.json }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build static export and package cpanel.zip
+        run: npm run build:cpanel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpanel
+          path: |
+            dist/cpanel.zip
+            dist/cpanel-manifest.json
+          retention-days: 30
+          if-no-files-found: error
+
+  e2e-cpanel:
+    name: E2E — cpanel.zip em Apache/PHP com API NestJS e FastAPI legada
+    needs: [api, web]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_DB: givova_ci, POSTGRES_USER: givova, POSTGRES_PASSWORD: ci_only_password }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U givova -d givova_ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/download-artifact@v4
+        with: { name: cpanel, path: dist }
+      - name: Install dependencies
+        run: |
+          npm ci --prefix backend-nest --no-audit --no-fund && npm run --prefix backend-nest build
+          npm ci --prefix givova-ti-frontend --no-audit --no-fund
+          python -m pip install -r backend/requirements.lock.txt
+      - name: Disposable databases and technician
+        env: { PGPASSWORD: ci_only_password }
+        run: |
+          docker run --rm --network host -e PGPASSWORD postgres:16 psql -h localhost -U givova -d givova_ci -c "CREATE DATABASE e2e_nest" -c "CREATE DATABASE e2e_legacy"
+          echo "E2E_TECH_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(15).toString('base64url'))")" >> "$GITHUB_ENV"
+      - name: Start NestJS API (:8001) and legacy FastAPI (:8002)
+        run: |
+          export DATABASE_URL=postgresql://givova:ci_only_password@localhost:5432/e2e_nest
+          node backend-nest/dist/src/cli/cli.js migrate
+          printf 'e2e-tecnico\nTécnico E2E\n' | GIVOVA_PASSWORD="$E2E_TECH_PASSWORD" node backend-nest/dist/src/cli/cli.js create-user
+          NODE_ENV=production PORT=8001 COOKIE_SECURE=true LOG_FORMAT=json ALLOWED_ORIGINS='["https://suporte-nest.givova.test"]' \
+            nohup node backend-nest/dist/src/main.js > nest.log 2>&1 &
+          (cd backend && DATABASE_URL=postgresql+psycopg://givova:ci_only_password@localhost:5432/e2e_legacy python -m alembic upgrade head)
+          HASH=$(cd backend-nest && node -e "require('./dist/src/auth/passwords').hashPassword(process.argv[1]).then(h=>process.stdout.write(h))" "$E2E_TECH_PASSWORD")
+          docker run --rm --network host -e PGPASSWORD=ci_only_password postgres:16 psql -h localhost -U givova -d e2e_legacy -c "INSERT INTO technicians (username, name, password_hash) VALUES ('e2e-tecnico', 'Técnico E2E', '$HASH')"
+          (cd backend && DATABASE_URL=postgresql+psycopg://givova:ci_only_password@localhost:5432/e2e_legacy ALLOWED_ORIGINS='["https://suporte-legacy.givova.test"]' COOKIE_SECURE=true \
+            nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8002 > ../legacy.log 2>&1 &)
+          for i in $(seq 1 30); do curl -fsS localhost:8001/health && curl -fsS localhost:8002/health && break; sleep 2; done
+      - name: Apache/PHP stack serving the extracted cpanel.zip
+        working-directory: givova-ti-frontend
+        run: |
+          node e2e/cpanel/prepare.mjs
+          docker compose -f e2e/cpanel/docker-compose.yml up -d
+          for i in $(seq 1 30); do curl -fsSk --resolve suporte-nest.givova.test:8443:127.0.0.1 https://suporte-nest.givova.test:8443/api/health && break; sleep 2; done
+      - name: Playwright (routing, headers, proxy, lifecycle, a11y, responsive)
+        working-directory: givova-ti-frontend
+        run: |
+          docker compose -f e2e/cpanel/docker-compose.yml --profile test run --rm \
+            -e E2E_TECH_USER=e2e-tecnico -e E2E_TECH_PASSWORD -e E2E_TARGETS=nest,legacy \
+            playwright npx playwright test
+      - name: Logs
+        if: failure()
+        run: |
+          tail -n 100 nest.log legacy.log || true
+          docker compose -f givova-ti-frontend/e2e/cpanel/docker-compose.yml logs --tail 100 || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: givova-ti-frontend/playwright-report, retention-days: 14 }
