@@ -12,7 +12,15 @@ npm ci
 npm run build:cpanel
 ```
 
-O script faz o build estático (`CPANEL_EXPORT=1`, API em `/api`, atualização por consulta periódica), junta `deploy/cpanel/`, calcula os hashes da CSP para os scripts inline, recusa arquivos proibidos (fontes, `.env`, mapas, chaves, `node_modules`…) e padrões de segredos, grava `dist/cpanel.zip` e o relê verificando o CRC de cada arquivo. O resumo e o SHA-256 ficam em `dist/cpanel-manifest.json`.
+O script faz o build estático (`CPANEL_EXPORT=1`, API em `/api`, atualização por consulta periódica), junta `deploy/cpanel/`, calcula os hashes da CSP para os scripts inline, recusa arquivos proibidos (fontes, `.env`, mapas, chaves, `node_modules`…) e padrões de segredos, grava `dist/cpanel.zip` e o relê verificando o CRC de cada arquivo. O resumo fica em `dist/cpanel-manifest.json` e a soma de verificação em `dist/cpanel.zip.sha256`. O CI publica os quatro arquivos (ZIP, `.sha256`, manifesto e este guia) como artefato `cpanel` de cada execução.
+
+Confira a integridade antes de enviar ao cPanel:
+
+```bash
+sha256sum -c cpanel.zip.sha256
+```
+
+No Windows (PowerShell): `Get-FileHash .\cpanel.zip -Algorithm SHA256` e compare com o valor do arquivo `.sha256`.
 
 ## 2. Instalar
 

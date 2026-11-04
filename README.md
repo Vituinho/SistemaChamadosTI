@@ -73,3 +73,5 @@ O CI (`.github/workflows/ci.yml`) executa tudo isso, incluindo a comparação do
 - Nenhuma credencial padrão; senhas só como hash Argon2; sessões revogáveis no servidor; cookies `HttpOnly`/`Secure`/`SameSite=Strict`.
 - Migrations somente aditivas, aplicadas manualmente (`npm run migrate`), compatíveis com o banco e o backend atuais. Faça backup antes de qualquer migration em produção.
 - Nunca use a conexão de produção em desenvolvimento ou testes.
+- Computadores compartilhados: por padrão o navegador **não guarda** nome, local nem links de chamados. Só com a opção "Lembrar meus dados e chamados neste computador" (desmarcada por padrão) esses dados ficam salvos, expiram (90 dias para os dados pessoais, 30 dias para os chamados) e podem ser apagados em "Esquecer este computador" ou "Não sou eu".
+- O indicador "Atrasado" só aparece se a API tiver `SLA_FIRST_RESPONSE_MINUTES` configurado; não há metas embutidas.

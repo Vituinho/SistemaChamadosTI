@@ -36,7 +36,8 @@ Copie `.env.example` para `.env` (nunca versione). Principais variáveis:
 | `SESSION_HOURS` | `8` | Duração fixa da sessão (1–72). |
 | `TRUST_PROXY` | `0` | Número de proxies confiáveis à frente da API (Render: `1`). |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_MAX_ATTEMPTS_PER_IP` | `10` / `30` | Janela de 5 min. |
-| `SLA_FIRST_RESPONSE_MINUTES` | `{"URGENTE":15,"ALTA":30,"NORMAL":120,"BAIXA":480}` | Define quando um chamado NOVO fica "atrasado". |
+| `SLA_FIRST_RESPONSE_MINUTES` | *(não definido)* | **Opcional.** Metas de 1º atendimento em minutos para as quatro prioridades, ex.: `{"URGENTE":15,"ALTA":30,"NORMAL":120,"BAIXA":480}` (apenas exemplo, não é política aprovada). Sem a variável, nenhum chamado é marcado como "Atrasado". |
+| `TICKET_CREATE_MAX_PER_IP` | `60` | Chamados abertos por IP a cada 10 min (o endpoint é público). Atrás do proxy do cPanel todos compartilham um IP. |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | vazio | Reutilize o par já usado em produção. |
 | `TIMEZONE` | `America/Sao_Paulo` | Usado em "resolvidos hoje". |
 | `LOG_FORMAT` | `json` em produção | Logs estruturados com `requestId`. |
@@ -71,6 +72,9 @@ Senhas são pedidas sem eco no terminal (ou via `GIVOVA_PASSWORD` em scripts) e 
 - Sessão: token aleatório de 256 bits; no banco apenas SHA-256; cookie `HttpOnly`, `SameSite=Strict`, `Secure`; validação no servidor a cada requisição; logout e CLI revogam.
 - CSRF: SameSite estrito + verificação de `Origin`/`Sec-Fetch-Site` + bloqueio de tipos de conteúdo de formulário.
 - Validação: DTOs `class-validator` rejeitam campos desconhecidos (422 `{ detail, fields }`).
+- `POST /tickets` (público) tem limite por IP verificado antes de ler o upload.
+- Web Push: só são aceitas assinaturas de serviços de push dos navegadores (FCM, Mozilla, Windows/WNS, Apple); a API nunca envia requisições a hosts arbitrários.
+- Novo link de acompanhamento: exige sessão de técnico e origem permitida; troca o hash da chave, encerra transmissões ao vivo abertas com a chave antiga e registra no histórico quem gerou (`author`) e quando.
 - Uploads: somente `POST /tickets`, um arquivo `attachment` até 5 MB; conteúdo verificado pelo `sharp` (PNG/JPEG/WEBP, ≤16 MP, sem animação) e recodificado em WEBP sem metadados; servido com `CSP sandbox`.
 - Acompanhamento: chave aleatória só no cabeçalho `X-Ticket-Key`, comparação em tempo constante; protocolo sozinho não revela nada.
 - Cabeçalhos via helmet, `Cache-Control: no-store`, erros sem detalhes internos, logs sem query string, corpo ou segredos.

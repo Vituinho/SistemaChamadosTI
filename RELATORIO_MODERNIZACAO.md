@@ -102,12 +102,12 @@ As primeiras execuções encontraram e motivaram correções reais: nome acessí
 
 ## 8. Pendências e limitações (não verificadas)
 
-1. **API de produção indisponível em 04/11/2026**: `sistemachamadosti.onrender.com` não respondeu (120 s). Verifique o serviço no painel do Render (suspenso, falha de deploy ou banco).
+1. **API de produção indisponível em 04/11/2026** — ver seção 10. Ação necessária no painel do Render (somente pelo responsável).
 2. A API NestJS **não foi implantada**. Siga `backend-nest/README.md` (novo serviço, `npm run migrate`, validação) e depois troque `api/config.php`.
 3. Conta cPanel real (LiteSpeed, ModSecurity, limites do provedor) não testada; a validação usou Apache 2.4 + PHP 8.3.
 4. Web Push com o navegador fechado não foi testado de ponta a ponta (depende de VAPID, permissão e serviço do navegador); o envio e a limpeza de assinaturas foram testados com transporte simulado.
 5. **API atual (FastAPI) atrás do proxy do cPanel:** o limite é de 10 logins por IP a cada 5 min, *contando os bem-sucedidos*, e todos os técnicos chegam com o IP do cPanel. Reproduzido no E2E (429 após 10 logins): na prática, a equipe inteira divide 10 logins a cada 5 min. A API NestJS limita por usuário+IP (10, zerado após sucesso) e por IP (30), o que resolve o problema após o cutover.
-6. Indicador "Atrasado" usa metas de 1º atendimento configuráveis (`SLA_FIRST_RESPONSE_MINUTES`) — confirme os valores com a equipe.
+6. Indicador "Atrasado": **desativado por padrão**. Só aparece quando `SLA_FIRST_RESPONSE_MINUTES` é configurado na API com as quatro prioridades. Os valores citados na documentação são apenas exemplo; a política deve ser definida pela empresa.
 7. Recuperação de senha pela interface não existe; use `npm run cli -- reset-password <usuario>`.
 
 ## 9. Checklist
@@ -116,8 +116,8 @@ Legenda: ✅ concluído e verificado por teste automatizado · ☑️ concluído
 
 | Funcionalidade | Status |
 | --- | --- |
-| Abrir chamado (validação, sugestões, sistema afetado, anexo, dados lembrados) | ✅ |
-| Protocolo, link de acompanhamento com chave secreta, salvar no computador | ✅ |
+| Abrir chamado (validação, sugestões, sistema afetado, anexo, dados lembrados com consentimento) | ✅ |
+| Protocolo, link de acompanhamento com chave secreta, salvar no computador (opcional) | ✅ |
 | Acompanhamento com atualização automática (polling no cPanel; SSE fora dele) | ✅ polling (E2E) · ✅ SSE (integração API) · ☑️ SSE no navegador |
 | Login da TI, sessão no servidor, logout, expiração, limite de tentativas | ✅ |
 | Compatibilidade com senhas Argon2 existentes (pwdlib) | ✅ |
@@ -127,8 +127,11 @@ Legenda: ✅ concluído e verificado por teste automatizado · ☑️ concluído
 | Resolver com solução; encerrados imutáveis | ✅ |
 | Histórico persistido e cronológico | ✅ |
 | Mensagens da TI ao colaborador (API v2) | ✅ |
-| Novo link de acompanhamento (invalida o anterior) | ✅ API · ☑️ interface |
-| Indicadores reais (atrasados, 1º atendimento, resolução, carga) | ✅ API · ☑️ interface |
+| Novo link de acompanhamento (autorização, invalida o anterior, encerra transmissões, auditoria) | ✅ API · ☑️ interface |
+| Indicadores reais (1º atendimento, resolução, carga) | ✅ API · ☑️ interface |
+| Indicador "Atrasado" (só com SLA configurado; sem padrão embutido) | ✅ |
+| Computadores compartilhados: memória local opcional, expiração, "Esquecer este computador" | ✅ unitário · ✅ E2E |
+| Limite de abertura de chamados por IP; push só para serviços de navegador | ✅ |
 | Alerta de novo chamado no painel | ✅ |
 | Som do painel | ☑️ (depende de permissão do navegador) |
 | Web Push com o navegador fechado | ⚠️ envio/limpeza testados com transporte simulado; entrega real não testada |
@@ -141,4 +144,26 @@ Legenda: ✅ concluído e verificado por teste automatizado · ☑️ concluído
 | `cpanel.zip` válido (estrutura, CRC, sem segredos) | ✅ |
 | Publicação no cPanel real | ⚠️ não realizada (aguarda autorização) |
 | API NestJS implantada no Render | ⚠️ não realizada (aguarda autorização) |
-| API de produção atual respondendo | ⚠️ indisponível em 04/11/2026 (seção 8) |
+| API de produção atual respondendo | ⚠️ indisponível em 04/11/2026 (seção 10) |
+
+## 10. Revisão após o push (04/11/2026)
+
+**Push e PR.** O branch já estava publicado (`d0004be`) quando a revisão começou; o PR #1 continua em **draft**, sem merge. O push gerou apenas um deploy **Preview** da Vercel (como em todos os pushes anteriores do branch); o último deploy **Production** da Vercel continua sendo o de `main` (13/10). Nenhum workflow faz deploy e não há configuração do Render no repositório.
+
+**CI.** Na primeira execução, o job do frontend falhou uma vez por um teste com corrida de tempo (o foco vai para o resumo de erros no quadro de animação seguinte); corrigido com espera explícita e executado 3 vezes seguidas sem falha. As ações `checkout`/`setup-node` foram atualizadas para v5 (Node 24).
+
+**Segurança — achados e correções.**
+- Dependências com vulnerabilidades conhecidas: Next.js 16.3.4 (avisos críticos de recursos de servidor — afetam os previews da Vercel, não o export estático) → **16.4.2**; `sharp` (CVEs da libvips, relevante porque decodificamos uploads) → **0.35.5**; `multer` aninhado no `@nestjs/platform-express` (DoS) forçado para **2.5.0** via `overrides`. `npm audit --omit=dev`: 0 vulnerabilidades nos dois pacotes.
+- `POST /tickets` público sem limite → limite por IP configurável, aplicado antes de ler o upload.
+- Assinaturas Web Push aceitavam qualquer URL HTTPS (um técnico autenticado poderia fazer a API enviar requisições a hosts arbitrários) → somente serviços de push dos navegadores; linhas antigas com outros hosts são ignoradas no envio.
+- Dependências: nenhuma desnecessária encontrada (cada pacote tem uso no código ou nos testes).
+
+**Novo link de acompanhamento (verificado por testes).** Exige sessão de técnico (401 sem sessão; a chave do colaborador não substitui a sessão), origem permitida (403 para origem externa) e chamado existente (404). Grava apenas o hash da nova chave; a chave antiga passa a responder 404; transmissões ao vivo abertas com a chave antiga recebem `expired` e são encerradas; o histórico registra *quem* (campo `author`), *quando* e que o link anterior foi desativado, sem conter nenhuma chave. Requisições recusadas não alteram a chave.
+
+**Computadores compartilhados.** Lembrar dados passou a ser **opcional e desmarcado por padrão**. Sem consentimento, nada é gravado no navegador (nome, local ou chaves) e o acompanhamento orienta a copiar o link. Com consentimento, os dados expiram (90/30 dias) e podem ser apagados em "Esquecer este computador" (página inicial) ou "Não sou eu" (formulário); desmarcar a opção ao enviar apaga tudo. O preenchimento automático do navegador para o nome fica desativado quando a opção está desmarcada. Observação: o histórico do navegador ainda guarda o endereço da página de acompanhamento (com a chave no fragmento), como antes; em computadores compartilhados recomenda-se janela anônima ou limpar o histórico.
+
+**SLA.** As metas de 1º atendimento não têm mais valor padrão: sem `SLA_FIRST_RESPONSE_MINUTES` (com as quatro prioridades) a API devolve `overdue: null` e a interface não mostra "Atrasado".
+
+**Compatibilidade do banco.** Sem novas migrations nesta revisão. A 0006 continua aditiva (colunas com default + índices + `CHECK` em `kind` aceitando o valor padrão usado pelo FastAPI); o rollback para o FastAPI segue possível sem reverter migrations.
+
+**Investigação da API do Render (somente leitura).** DNS resolve para a borda do Render (GCP us-west1 via Cloudflare); TCP e TLS completam em ~60 ms e a requisição é aceita, mas **nenhum byte de resposta** chega em 70 s — em qualquer caminho, inclusive inexistentes (que o app responderia com 404 imediatamente). Um host `*.onrender.com` inexistente responde em 0,65 s com `404 x-render-routing: no-server`, logo **o serviço existe** (não foi apagado). A página de status do Render indica "All Systems Operational" (não é incidente da plataforma). Conclusão provável: a instância do serviço **não consegue ficar saudável na inicialização** e o proxy do Render segura as requisições. O comando de início do serviço executa `alembic upgrade head` antes do Uvicorn; se o PostgreSQL estiver inacessível (por exemplo, banco gratuito do Render expirado — expira 30 dias após a criação), a inicialização trava ou reinicia em ciclo. **Confirme no painel do Render**: *Events* e *Logs* do serviço e o status/data de expiração do banco. Nada foi reiniciado, reconfigurado ou implantado.
