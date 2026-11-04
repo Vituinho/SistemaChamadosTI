@@ -90,7 +90,9 @@ describe('ticket creation, tracking and attachments', { skip: skipReason }, () =
     const created = await createTicket(t.client());
     const c = t.client();
     assert.equal((await c.get(`/tracking/${created.protocol}`)).status, 404);
-    assert.equal((await c.get(`/tracking/${created.protocol}`, { 'X-Ticket-Key': created.access_key.slice(0, -1) + 'A' })).status, 404);
+    // Change the last character to a *different* one (a fixed replacement collides 1 time in 64).
+    const almost = created.access_key.slice(0, -1) + (created.access_key.endsWith('A') ? 'B' : 'A');
+    assert.equal((await c.get(`/tracking/${created.protocol}`, { 'X-Ticket-Key': almost })).status, 404);
     assert.equal((await c.get(`/tracking/GV-999999`, { 'X-Ticket-Key': created.access_key })).status, 404);
     assert.equal((await c.get(`/tracking/GV-1%20OR%201=1`, { 'X-Ticket-Key': created.access_key })).status, 404);
     const ok = await c.get(`/tracking/${created.protocol}`, { 'X-Ticket-Key': created.access_key });
