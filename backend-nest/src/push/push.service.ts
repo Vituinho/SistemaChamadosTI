@@ -6,6 +6,22 @@ import { DatabaseService } from '../database/database.service';
 import type { PushSubscriptionDto } from './push.dto';
 
 type SubscriptionRow = { id: number; endpoint: string; p256dh: string; auth: string };
+
+/**
+ * Hosts of the browsers' push services (Chrome/Edge legacy FCM, Firefox, Edge/Windows, Safari).
+ * Subscriptions are created by the browser, so any other host means a forged request; refusing
+ * them prevents the API from being used to send requests to arbitrary servers.
+ */
+const PUSH_SERVICE_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /(^|\.)notify\.windows\.com$/, /(^|\.)push\.apple\.com$/];
+
+export function isPushServiceEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return url.protocol === 'https:' && !url.port && !url.username && PUSH_SERVICE_HOSTS.some(host => host.test(url.hostname));
+  } catch {
+    return false;
+  }
+}
 export type PushPayload = { title: string; body: string; url: string; tag: string };
 
 /** Sender is replaceable in tests (no network). */
@@ -50,6 +66,9 @@ export class PushService {
 
   async subscribe(dto: PushSubscriptionDto, technicianId: number) {
     this.requireEnabled();
+    if (!isPushServiceEndpoint(dto.endpoint)) {
+      throw new ApiError(HttpStatus.UNPROCESSABLE_ENTITY, 'Serviço de notificação do navegador não reconhecido.', ['endpoint']);
+    }
     await this.db.query(
       `INSERT INTO push_subscriptions (technician_id, endpoint, p256dh, auth, created_at) VALUES ($1, $2, $3, $4, now())
        ON CONFLICT (endpoint) DO UPDATE SET technician_id = EXCLUDED.technician_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
@@ -101,6 +120,10 @@ export class PushService {
     const stale: number[] = [];
     await Promise.all(
       rows.map(async row => {
+        if (!isPushServiceEndpoint(row.endpoint)) {
+          this.logger.warn({ msg: 'Assinatura Web Push ignorada: host não reconhecido', subscriptionId: row.id });
+          return;
+        }
         try {
           await this.sender({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }, message);
         } catch (error) {

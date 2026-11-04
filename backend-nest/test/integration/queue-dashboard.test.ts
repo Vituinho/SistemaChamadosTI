@@ -9,7 +9,8 @@ describe('queue filters, pagination and dashboard metrics', { skip: skipReason }
   let ids: number[] = [];
 
   before(async () => {
-    t = await startApp();
+    // SLA targets are opt-in; this suite configures example values explicitly.
+    t = await startApp({ env: { SLA_FIRST_RESPONSE_MINUTES: '{"URGENTE":15,"ALTA":30,"NORMAL":120,"BAIXA":480}' } });
     const anaId = await t.createTechnician('ana', 'Ana TI');
     await t.createTechnician('bruno', 'Bruno TI');
     ana = await t.login('ana');

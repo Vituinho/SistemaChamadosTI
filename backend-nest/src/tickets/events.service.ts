@@ -65,6 +65,17 @@ export class EventsService implements OnModuleDestroy {
     }, 50);
   }
 
+  /** Ends every public tracking stream of a ticket (its access key was replaced). */
+  revokeTracking(ticketId: number) {
+    for (const client of [...this.clients]) {
+      if (client.ticketId !== ticketId) continue;
+      this.send(client, 'event: expired\ndata: {}\n\n');
+      client.res.end();
+      this.clients.delete(client);
+    }
+    if (!this.clients.size) this.stop();
+  }
+
   private start() {
     this.timer ??= setInterval(() => void this.tick(), POLL_MS);
   }

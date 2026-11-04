@@ -16,6 +16,8 @@ import { toDetail } from '../../src/tickets/ticket.serializer';
 import { toErrorBody } from '../../src/common/http/api-exception.filter';
 import { ApiError } from '../../src/common/http/api-error';
 import { destructiveStatements, loadMigrations } from '../../src/database/migrator';
+import { SlidingWindowLimiter } from '../../src/common/rate-limit';
+import { isPushServiceEndpoint } from '../../src/push/push.service';
 
 function validate<T extends object>(cls: new () => T, plain: unknown) {
   const instance = plainToInstance(cls, plain as object);
@@ -183,7 +185,8 @@ describe('configuration', () => {
     assert.equal(config.trustProxy, 0);
     assert.equal(config.sessionHours, 8);
     assert.equal(config.vapid, null);
-    assert.deepEqual(config.slaFirstResponseMinutes, { URGENTE: 15, ALTA: 30, NORMAL: 120, BAIXA: 480 });
+    assert.equal(config.slaFirstResponseMinutes, null, 'no implicit business targets');
+    assert.equal(config.ticketCreateMaxPerIp, 60);
   });
   test('rejects unsafe or malformed settings', () => {
     assert.throws(() => loadConfig({}), ConfigError);
@@ -194,12 +197,37 @@ describe('configuration', () => {
     assert.throws(() => loadConfig({ ...base, TIMEZONE: 'Mars/Base' }), ConfigError);
     assert.throws(() => loadConfig({ ...base, VAPID_PUBLIC_KEY: 'x' }), ConfigError);
     assert.throws(() => loadConfig({ ...base, SLA_FIRST_RESPONSE_MINUTES: '{"CRITICA":5}' }), ConfigError);
+    assert.throws(() => loadConfig({ ...base, SLA_FIRST_RESPONSE_MINUTES: '{"URGENTE":10}' }), ConfigError, 'all four priorities are required');
+    assert.throws(() => loadConfig({ ...base, SLA_FIRST_RESPONSE_MINUTES: '{"URGENTE":0,"ALTA":30,"NORMAL":120,"BAIXA":480}' }), ConfigError);
+    assert.throws(() => loadConfig({ ...base, TICKET_CREATE_MAX_PER_IP: '1' }), ConfigError);
   });
   test('parses origins and SLA overrides', () => {
-    const config = loadConfig({ ...base, ALLOWED_ORIGINS: '["https://suporte.exemplo.com.br/"]', SLA_FIRST_RESPONSE_MINUTES: '{"URGENTE":10}' });
+    const config = loadConfig({ ...base, ALLOWED_ORIGINS: '["https://suporte.exemplo.com.br/"]', SLA_FIRST_RESPONSE_MINUTES: '{"URGENTE":10,"ALTA":20,"NORMAL":60,"BAIXA":240}' });
     assert.deepEqual(config.allowedOrigins, ['https://suporte.exemplo.com.br']);
-    assert.equal(config.slaFirstResponseMinutes.URGENTE, 10);
-    assert.equal(config.slaFirstResponseMinutes.NORMAL, 120);
+    assert.deepEqual(config.slaFirstResponseMinutes, { URGENTE: 10, ALTA: 20, NORMAL: 60, BAIXA: 240 });
+  });
+});
+
+describe('sliding window limiter and push endpoints', () => {
+  test('limits per key inside the window and recovers', () => {
+    let now = 0;
+    const limiter = new SlidingWindowLimiter(2, 1000, 100, () => now);
+    assert.ok(limiter.tryConsume('a'));
+    assert.ok(limiter.tryConsume('a'));
+    assert.equal(limiter.tryConsume('a'), false);
+    assert.ok(limiter.tryConsume('b'));
+    now = 1001;
+    assert.ok(limiter.tryConsume('a'));
+  });
+  test('only browser push services are accepted as Web Push endpoints', () => {
+    for (const ok of [
+      'https://fcm.googleapis.com/fcm/send/abc', 'https://updates.push.services.mozilla.com/wpush/v2/abc',
+      'https://wns2-by3p.notify.windows.com/w/?token=abc', 'https://web.push.apple.com/abc',
+    ]) assert.ok(isPushServiceEndpoint(ok), ok);
+    for (const bad of [
+      'http://fcm.googleapis.com/fcm/send/abc', 'https://fcm.googleapis.com:8443/x', 'https://evil.com/fcm.googleapis.com',
+      'https://fcm.googleapis.com.evil.com/x', 'https://169.254.169.254/latest', 'https://localhost/x', 'https://user@fcm.googleapis.com/x', 'not a url',
+    ]) assert.equal(isPushServiceEndpoint(bad), false, bad);
   });
 });
 

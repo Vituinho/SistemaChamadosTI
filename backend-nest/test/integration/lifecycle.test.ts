@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { after, before, describe, test } from 'node:test';
+import { digest } from '../../src/common/crypto';
 import { Client, createTicket, skipReason, startApp, type TestApp } from '../support/harness';
 
 describe('ticket lifecycle', { skip: skipReason }, () => {
@@ -122,5 +123,51 @@ describe('ticket lifecycle', { skip: skipReason }, () => {
     const c = t.client();
     assert.equal((await c.get(`/tracking/${created.protocol}`, { 'X-Ticket-Key': created.access_key })).status, 404);
     assert.equal((await c.get(`/tracking/${created.protocol}`, { 'X-Ticket-Key': renewed.body.access_key })).status, 200);
+    // Only the hash of the new key is stored.
+    const { rows } = await t.pool.query('SELECT access_hash FROM tickets WHERE id = $1', [created.id]);
+    assert.equal(rows[0].access_hash, digest(renewed.body.access_key));
+    // Audit trail: who generated it, when, and that the previous link was disabled (no key in the text).
+    const history = (await ana.get(`/tickets/${created.id}/history`)).body as { message: string; author: string | null; kind: string; created_at: string }[];
+    const audit = history.at(-1)!;
+    assert.equal(audit.kind, 'event');
+    assert.equal(audit.author, 'Ana TI');
+    assert.match(audit.message, /Ana TI gerou um novo link de acompanhamento; o link anterior foi desativado/);
+    assert.ok(audit.created_at);
+    assert.equal(history.some(h => h.message.includes(renewed.body.access_key) || h.message.includes(created.access_key)), false);
+  });
+
+  test('tracking link renewal requires an authenticated technician from an allowed origin', async () => {
+    const created = await createTicket(t.client());
+    const before = (await t.pool.query('SELECT access_hash FROM tickets WHERE id = $1', [created.id])).rows[0].access_hash;
+    assert.equal((await t.client().post(`/tickets/${created.id}/tracking-link`)).status, 401);
+    assert.equal((await ana.request('POST', `/tickets/${created.id}/tracking-link`, { origin: 'https://evil.example' })).status, 403);
+    // The employee's own key does not grant technician actions.
+    assert.equal((await t.client().request('POST', `/tickets/${created.id}/tracking-link`, { headers: { 'X-Ticket-Key': created.access_key } })).status, 401);
+    assert.equal((await ana.post('/tickets/999999/tracking-link')).status, 404);
+    const after = (await t.pool.query('SELECT access_hash FROM tickets WHERE id = $1', [created.id])).rows[0].access_hash;
+    assert.equal(after, before, 'refused requests do not change the key');
+  });
+
+  test('renewing the link closes live tracking streams opened with the old key', async () => {
+    const created = await createTicket(t.client());
+    const controller = new AbortController();
+    const res = await fetch(`${t.base}/tracking/${created.protocol}/events`, { headers: { 'X-Ticket-Key': created.access_key }, signal: controller.signal });
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      while (!text.includes('event: update')) text += decoder.decode((await reader.read()).value, { stream: true });
+      assert.equal((await ana.post(`/tickets/${created.id}/tracking-link`)).status, 200);
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+    assert.match(text, /event: expired/);
+    assert.equal(controller.signal.aborted, false, 'the server ended the stream (not the client timeout)');
   });
 });

@@ -19,6 +19,14 @@ describe('authentication and sessions', { skip: skipReason }, () => {
     assert.ok(catalog.departments.includes('Financeiro'));
     assert.equal(catalog.api_version, 2);
     assert.ok(catalog.features.includes('notes'));
+    assert.equal(catalog.sla_first_response_minutes, null, 'no SLA unless configured');
+  });
+
+  test('without configured SLA the dashboard reports no overdue count', async () => {
+    const c = await t.login('ana');
+    const dashboard = (await c.get('/dashboard')).body;
+    assert.equal(dashboard.overdue, null);
+    assert.equal(dashboard.sla_first_response_minutes, null);
   });
 
   test('logs in with a password hash created by the legacy Python backend', async () => {

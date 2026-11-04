@@ -13,7 +13,8 @@ export interface DashboardResponse {
   // Additive fields (API v2)
   revision: number;
   open: number;
-  overdue: number;
+  /** null when SLA_FIRST_RESPONSE_MINUTES is not configured. */
+  overdue: number | null;
   opened_today: number;
   metrics: {
     window_days: number;
@@ -39,6 +40,8 @@ export class DashboardService {
   async summary(): Promise<DashboardResponse> {
     const sla = this.config.slaFirstResponseMinutes;
     const tz = this.config.timezone;
+    // Without configured targets the overdue count is not reported (no implicit policy).
+    const targets = sla ?? { URGENTE: 0, ALTA: 0, NORMAL: 0, BAIXA: 0 };
     const [counts, totals, metrics, workload] = await Promise.all([
       this.db.query<{ status: string; count: number }>('SELECT status, COUNT(*)::int AS count FROM tickets GROUP BY status'),
       this.db.query<{ resolved_today: number; opened_today: number; latest_id: number; revision: number; overdue: number }>(
@@ -50,7 +53,7 @@ export class DashboardService {
            (SELECT COALESCE(MAX(id), 0)::int FROM ticket_history) AS revision,
            (SELECT COUNT(*)::int FROM tickets WHERE status = 'NOVO' AND created_at < now() - make_interval(mins =>
               CASE priority WHEN 'URGENTE' THEN $2::int WHEN 'ALTA' THEN $3::int WHEN 'NORMAL' THEN $4::int ELSE $5::int END)) AS overdue`,
-        [tz, sla.URGENTE, sla.ALTA, sla.NORMAL, sla.BAIXA],
+        [tz, targets.URGENTE, targets.ALTA, targets.NORMAL, targets.BAIXA],
       ),
       this.db.query<{ fr_avg: number | null; fr_count: number; res_avg: number | null; res_count: number }>(
         `SELECT
@@ -79,7 +82,7 @@ export class DashboardService {
       latest_id: t.latest_id,
       revision: t.revision,
       open: OPEN_STATUSES.reduce((sum, status) => sum + (byStatus[status] ?? 0), 0),
-      overdue: t.overdue,
+      overdue: sla ? t.overdue : null,
       opened_today: t.opened_today,
       metrics: {
         window_days: WINDOW_DAYS,

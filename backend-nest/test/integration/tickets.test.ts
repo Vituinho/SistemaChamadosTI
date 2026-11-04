@@ -119,6 +119,21 @@ describe('ticket creation, tracking and attachments', { skip: skipReason }, () =
     assert.deepEqual(rows[0], { status: 'NOVO', priority: 'NORMAL' });
   });
 
+  test('public ticket creation is throttled per IP before parsing uploads', async () => {
+    const limited = await startApp({ env: { TICKET_CREATE_MAX_PER_IP: '5' } });
+    try {
+      const c = limited.client();
+      for (let i = 0; i < 5; i++) assert.equal((await c.post('/tickets', VALID_TICKET)).status, 201);
+      const blocked = await c.request('POST', '/tickets', { form: ticketForm(VALID_TICKET, { data: Buffer.alloc(1024), name: 'x.png' }) });
+      assert.equal(blocked.status, 429);
+      assert.match(blocked.body.detail, /Muitos chamados/);
+      const { rows } = await limited.pool.query('SELECT COUNT(*)::int AS n FROM tickets');
+      assert.equal(rows[0].n, 5);
+    } finally {
+      await limited.close();
+    }
+  });
+
   test('invalid ids are rejected before touching the database', async () => {
     assert.equal((await staff.get('/tickets/abc')).status, 422);
     assert.equal((await staff.get('/tickets/0')).status, 422);

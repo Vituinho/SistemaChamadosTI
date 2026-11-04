@@ -8,6 +8,7 @@ import { parseId } from '../common/protocol';
 import { AddNoteDto, CreateTicketDto, ListTicketsQuery, ResolveTicketDto, UpdateTicketDto } from './dto/ticket.dto';
 import { EventsService } from './events.service';
 import { TicketsService } from './tickets.service';
+import { TicketCreateThrottle } from './create-throttle.guard';
 import { TicketUploadInterceptor } from './upload.interceptor';
 
 function ticketId(raw: string): number {
@@ -38,6 +39,7 @@ export class TicketsController {
   /** Public: employees open tickets without logging in. */
   @Post('tickets')
   @HttpCode(201)
+  @UseGuards(TicketCreateThrottle)
   @UseInterceptors(TicketUploadInterceptor)
   create(@Body() dto: CreateTicketDto, @Req() req: Request) {
     return this.tickets.create(dto, req.file?.buffer);

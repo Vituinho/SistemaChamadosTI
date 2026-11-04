@@ -138,8 +138,11 @@ export class TicketsService {
       const ticket = await this.repo.findById(id, client, true);
       if (!ticket) throw new ApiError(HttpStatus.NOT_FOUND, NOT_FOUND);
       await this.repo.setAccessHash(client, id, digest(accessKey));
-      await this.repo.addHistory(client, id, `${actor.name} gerou um novo link de acompanhamento`);
+      // Audit trail: who and when (timestamp from the database), visible in the ticket history.
+      await this.repo.addHistory(client, id, `${actor.name} gerou um novo link de acompanhamento; o link anterior foi desativado`, 'event', actor.name);
     });
+    // Live streams opened with the previous key are closed immediately.
+    this.events.revokeTracking(id);
     this.events.changed(id);
     return { protocol: formatProtocol(id), access_key: accessKey };
   }

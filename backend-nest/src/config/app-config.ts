@@ -23,15 +23,20 @@ export interface AppConfig {
   loginMaxAttempts: number;
   loginMaxAttemptsPerIp: number;
   loginWindowMs: number;
-  /** Minutes until a ticket without first response is considered overdue. */
-  slaFirstResponseMinutes: Record<Priority, number>;
+  /** Max ticket creations per client IP in ticketCreateWindowMs (public endpoint). */
+  ticketCreateMaxPerIp: number;
+  ticketCreateWindowMs: number;
+  /**
+   * Minutes until a NEW ticket without first response is flagged as overdue.
+   * null = not configured: no overdue indicator is computed or shown. There is
+   * deliberately no built-in default — the targets are a business decision.
+   */
+  slaFirstResponseMinutes: Record<Priority, number> | null;
   vapid: VapidConfig | null;
   logFormat: 'json' | 'pretty';
 }
 
 export class ConfigError extends Error {}
-
-const DEFAULT_SLA: Record<Priority, number> = { URGENTE: 15, ALTA: 30, NORMAL: 120, BAIXA: 480 };
 
 function integer(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number, max: number): number {
   const raw = env[name];
@@ -77,9 +82,9 @@ function origins(env: NodeJS.ProcessEnv): string[] {
   });
 }
 
-function sla(env: NodeJS.ProcessEnv): Record<Priority, number> {
-  const raw = env.SLA_FIRST_RESPONSE_MINUTES;
-  if (!raw) return { ...DEFAULT_SLA };
+function sla(env: NodeJS.ProcessEnv): Record<Priority, number> | null {
+  const raw = env.SLA_FIRST_RESPONSE_MINUTES?.trim();
+  if (!raw) return null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -89,10 +94,13 @@ function sla(env: NodeJS.ProcessEnv): Record<Priority, number> {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new ConfigError('SLA_FIRST_RESPONSE_MINUTES deve ser um objeto JSON.');
   }
-  const result = { ...DEFAULT_SLA };
-  for (const [key, value] of Object.entries(parsed)) {
+  const entries = Object.entries(parsed);
+  const message = 'SLA_FIRST_RESPONSE_MINUTES deve definir BAIXA, NORMAL, ALTA e URGENTE, cada um com minutos entre 1 e 10080.';
+  if (entries.length !== PRIORITIES.length) throw new ConfigError(message);
+  const result = {} as Record<Priority, number>;
+  for (const [key, value] of entries) {
     if (!(PRIORITIES as readonly string[]).includes(key) || !Number.isInteger(value) || (value as number) < 1 || (value as number) > 10_080) {
-      throw new ConfigError('SLA_FIRST_RESPONSE_MINUTES aceita BAIXA, NORMAL, ALTA e URGENTE com minutos entre 1 e 10080.');
+      throw new ConfigError(message);
     }
     result[key as Priority] = value as number;
   }
@@ -148,6 +156,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     loginMaxAttempts: integer(env, 'LOGIN_MAX_ATTEMPTS', 10, 3, 100),
     loginMaxAttemptsPerIp: integer(env, 'LOGIN_MAX_ATTEMPTS_PER_IP', 30, 5, 1000),
     loginWindowMs: 5 * 60_000,
+    ticketCreateMaxPerIp: integer(env, 'TICKET_CREATE_MAX_PER_IP', 60, 5, 10_000),
+    ticketCreateWindowMs: 10 * 60_000,
     slaFirstResponseMinutes: sla(env),
     vapid: vapid(env),
     logFormat: format,

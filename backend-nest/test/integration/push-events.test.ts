@@ -54,10 +54,12 @@ describe('Web Push and real-time events', { skip: skipReason }, () => {
     const config = (await ana.get('/push/config')).body;
     assert.equal(config.enabled, true);
     assert.ok(config.public_key.length > 40);
-    assert.equal((await ana.post('/push/subscribe', { endpoint: 'http://push.example.com/abc123456789', keys })).status, 422);
-    assert.equal((await ana.post('/push/subscribe', { endpoint: 'https://push.example.com/abc123456789' })).status, 422);
-    assert.equal((await ana.post('/push/subscribe', { endpoint: 'https://push.example.com/ok/1234567890', keys })).status, 200);
-    assert.equal((await ana.post('/push/subscribe', { endpoint: 'https://push.example.com/gone/123456789', keys })).status, 200);
+    assert.equal((await ana.post('/push/subscribe', { endpoint: 'http://fcm.googleapis.com/fcm/send/abc123456789', keys })).status, 422);
+    assert.equal((await ana.post('/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/abc123456789' })).status, 422);
+    const foreign = await ana.post('/push/subscribe', { endpoint: 'https://internal.example.com/collect/123456', keys });
+    assert.equal(foreign.status, 422, 'arbitrary hosts are refused (no request forwarding)');
+    assert.equal((await ana.post('/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/ok/1234567890', keys })).status, 200);
+    assert.equal((await ana.post('/push/subscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/gone/123456789', keys })).status, 200);
     const { rows } = await t.pool.query('SELECT COUNT(*)::int AS n FROM push_subscriptions');
     assert.equal(rows[0].n, 2);
   });
@@ -79,7 +81,19 @@ describe('Web Push and real-time events', { skip: skipReason }, () => {
       await new Promise(r => setTimeout(r, 20));
     }
     const { rows } = await t.pool.query('SELECT endpoint FROM push_subscriptions');
-    assert.deepEqual(rows.map(r => r.endpoint), ['https://push.example.com/ok/1234567890']);
+    assert.deepEqual(rows.map(r => r.endpoint), ['https://fcm.googleapis.com/fcm/send/ok/1234567890']);
+  });
+
+  test('legacy rows with unknown hosts are never contacted', async () => {
+    await t.pool.query(
+      "INSERT INTO push_subscriptions (technician_id, endpoint, p256dh, auth, created_at) SELECT id, 'https://internal.example.com/x', $1, $2, now() FROM technicians LIMIT 1",
+      [keys.p256dh, keys.auth],
+    );
+    t.pushes.length = 0;
+    await createTicket(t.client());
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(t.pushes.some(p => p.endpoint.includes('internal.example.com')), false);
+    await t.pool.query("DELETE FROM push_subscriptions WHERE endpoint = 'https://internal.example.com/x'");
   });
 
   test('test notification and unsubscribe only affect the current technician', async () => {
@@ -87,7 +101,7 @@ describe('Web Push and real-time events', { skip: skipReason }, () => {
     assert.equal((await ana.post('/push/test')).status, 200);
     for (let i = 0; i < 50 && !t.pushes.length; i++) await new Promise(r => setTimeout(r, 20));
     assert.equal(t.pushes[0].payload.tag, 'givova-ti-test');
-    assert.equal((await ana.post('/push/unsubscribe', { endpoint: 'https://push.example.com/ok/1234567890' })).status, 200);
+    assert.equal((await ana.post('/push/unsubscribe', { endpoint: 'https://fcm.googleapis.com/fcm/send/ok/1234567890' })).status, 200);
     const { rows } = await t.pool.query('SELECT COUNT(*)::int AS n FROM push_subscriptions');
     assert.equal(rows[0].n, 0);
   });
