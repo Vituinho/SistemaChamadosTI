@@ -59,4 +59,5 @@ next-env.d.ts
 /givova-ti-frontend/test-results/
 /givova-ti-frontend/playwright-report/
 /givova-ti-frontend/e2e/.auth/
+/givova-ti-frontend/e2e/.work/
 /cpanel.zip
