@@ -2,17 +2,24 @@
   "compilerOptions": {
     "module": "CommonJS",
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2023"],
+    "useDefineForClassFields": false,
     "moduleResolution": "Node",
     "outDir": "dist",
     "rootDir": ".",
     "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "esModuleInterop": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": false,
+    "types": ["node", "multer"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }
