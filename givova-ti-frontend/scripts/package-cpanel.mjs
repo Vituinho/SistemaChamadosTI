@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 /**
- * Builds the static cPanel package: dist/cpanel.zip (extract into the document root).
+ * Builds the static cPanel package (extract into the document root).
  *
- *   node scripts/package-cpanel.mjs [--skip-build] [--out <dir>]
+ *   node scripts/package-cpanel.mjs [--api-url https://<api-host>] [--no-verify] [--skip-build] [--out <dir>]
+ *
+ * Channels:
+ * - production → dist/cpanel.zip: only with --api-url AND a successful live check of
+ *   that API (GET /health = ok, GET /catalog api_version >= 2, valid TLS). The proxy
+ *   config gets that exact host as the only allowed upstream.
+ * - staging → dist/cpanel-staging.zip: no --api-url (proxy answers 503 "not
+ *   configured"), or --api-url with --no-verify. Never deploy a staging package to
+ *   production.
  *
  * Steps: CPANEL_EXPORT=1 next build → verify routes → merge deploy/cpanel →
  * compute CSP hashes of inline scripts → reject forbidden files and secrets →
@@ -22,7 +30,62 @@ const ROOT = resolve(FRONTEND, "..");
 const DEPLOY = join(ROOT, "deploy", "cpanel");
 const args = process.argv.slice(2);
 const outDir = args.includes("--out") ? resolve(args[args.indexOf("--out") + 1]) : join(ROOT, "dist");
-const target = join(outDir, "cpanel.zip");
+const option = name => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
+const API_HOST = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/** Validates --api-url: https://<public dns name>, nothing else (same rules as api/upstream.php). */
+function parseApiUrl(raw) {
+  if (!raw) return null;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`--api-url inválida: ${raw}`);
+  }
+  const host = url.hostname.toLowerCase();
+  if (url.protocol !== "https:" || url.port || url.username || url.password || url.search || url.hash || !["", "/"].includes(url.pathname)
+      || !API_HOST.test(host) || /(^|\.)(localhost|internal|local|test|invalid|example)$/.test(host)) {
+    throw new Error("--api-url deve ser https://<domínio público> sem porta, caminho, consulta ou credenciais.");
+  }
+  return { url: `https://${host}`, host };
+}
+
+/** The production channel requires the API to answer for real (no invented or unverified URLs). */
+async function verifyApi(api) {
+  const get = async path => {
+    const response = await fetch(api.url + path, { redirect: "error", signal: AbortSignal.timeout(20_000), headers: { "User-Agent": "givova-ti-packager" } });
+    if (!response.ok) throw new Error(`${path} respondeu HTTP ${response.status}`);
+    return response.json();
+  };
+  const health = await get("/health");
+  if (health.status !== "ok") throw new Error("/health não respondeu status ok (banco indisponível?)");
+  const catalog = await get("/catalog");
+  if (!(catalog.api_version >= 2)) throw new Error("/catalog não é da API NestJS (api_version >= 2).");
+  log(`✓ API verificada: ${api.url} (health ok, api_version ${catalog.api_version})`);
+}
+
+function proxyConfig(api) {
+  return `<?php
+// Gerado por scripts/package-cpanel.mjs após verificar a API em ${new Date().toISOString().slice(0, 10)}.
+// Somente endereços públicos: nunca coloque senhas, chaves ou a conexão do banco aqui.
+return [
+    'backend_url' => 'https://${api.host}',
+    'allowed_hosts' => ['${api.host}'],
+    'timeout' => 20,
+];
+`;
+}
+
+let api;
+try {
+  api = parseApiUrl(option("--api-url"));
+} catch (error) {
+  console.error(`✗ ${error.message}`);
+  process.exit(1);
+}
+const channel = api && !args.includes("--no-verify") ? "production" : "staging";
+const zipName = channel === "production" ? "cpanel.zip" : "cpanel-staging.zip";
+const target = join(outDir, zipName);
 
 const REQUIRED_ROUTES = ["", "chamado", "acompanhar", "ti", "painel", "tutorial"];
 const REQUIRED_FILES = [
@@ -84,7 +147,8 @@ function inlineScriptHashes(files) {
   return [...hashes].sort();
 }
 
-function main() {
+async function main() {
+  if (channel === "production") await verifyApi(api);
   if (!args.includes("--skip-build")) build();
   const out = join(FRONTEND, "out");
   if (!existsSync(out)) throw new Error("Pasta out/ ausente. Rode sem --skip-build.");
@@ -108,7 +172,18 @@ function main() {
   if (!htaccess.includes("__CSP_SCRIPT_HASHES__")) throw new Error(".htaccess sem o marcador __CSP_SCRIPT_HASHES__");
   files.set(".htaccess", Buffer.from(htaccess.replace("__CSP_SCRIPT_HASHES__", hashes.join(" ")), "utf8"));
 
-  files.set("build.json", Buffer.from(JSON.stringify({ app: "givova-ti", commit: gitCommit(), commit_date: commitDate(), api: "/api (proxy PHP)" }, null, 2) + "\n"));
+  if (api) files.set("api/config.php", Buffer.from(proxyConfig(api), "utf8"));
+  const proxyTarget = /'backend_url' => '([^']*)'/.exec(Buffer.from(files.get("api/config.php")).toString("utf8"))?.[1] ?? "";
+  if (channel === "production" && proxyTarget !== api.url) throw new Error("config.php não aponta para a API verificada.");
+  if (channel === "staging" && !api && proxyTarget !== "") throw new Error("O config.php padrão do pacote de staging deve ter backend_url vazio.");
+  files.set("build.json", Buffer.from(JSON.stringify({
+    app: "givova-ti",
+    channel,
+    api_upstream: proxyTarget || null,
+    api_verified: channel === "production",
+    commit: gitCommit(),
+    commit_date: commitDate(),
+  }, null, 2) + "\n"));
 
   const problems = [];
   for (const [name, data] of files) {
@@ -139,17 +214,18 @@ function main() {
   }
   const sha256 = createHash("sha256").update(readFileSync(target)).digest("hex");
   const size = statSync(target).size;
-  const manifest = { file: "cpanel.zip", bytes: size, sha256, files: names.length, csp_script_hashes: hashes.length, commit: gitCommit() };
-  writeFileSync(join(outDir, "cpanel-manifest.json"), JSON.stringify({ ...manifest, entries: names }, null, 2) + "\n");
-  writeFileSync(join(outDir, "cpanel.zip.sha256"), `${sha256}  cpanel.zip\n`);
+  const manifest = { file: zipName, channel, api_upstream: proxyTarget || null, bytes: size, sha256, files: names.length, csp_script_hashes: hashes.length, commit: gitCommit() };
+  writeFileSync(join(outDir, zipName.replace(/\.zip$/, "-manifest.json")), JSON.stringify({ ...manifest, entries: names }, null, 2) + "\n");
+  writeFileSync(join(outDir, `${zipName}.sha256`), `${sha256}  ${zipName}\n`);
   log(`✓ ${target}`);
+  log(channel === "production"
+    ? `  PRODUÇÃO · API ${proxyTarget}`
+    : `  STAGING · ${proxyTarget ? `API não verificada: ${proxyTarget}` : "sem API configurada (o proxy responde 503)"} — NÃO publicar em produção`);
   log(`  ${(size / 1024 / 1024).toFixed(2)} MiB · ${names.length} arquivos · ${hashes.length} hashes CSP`);
   log(`  sha256 ${sha256}`);
 }
 
-try {
-  main();
-} catch (error) {
+main().catch(error => {
   console.error(`✗ ${error.message}`);
   process.exitCode = 1;
-}
+});
