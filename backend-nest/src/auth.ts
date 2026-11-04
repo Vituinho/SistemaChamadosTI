@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, TooManyRequestsException, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
@@ -23,7 +23,7 @@ export class AuthService {
       if (valid.length) attempts.set(stored, valid); else attempts.delete(stored);
     }
     const values = attempts.get(key) ?? [];
-    if (attempts.size > 10_000 || values.length >= 10) throw new TooManyRequestsException('Muitas tentativas. Aguarde cinco minutos.');
+    if (attempts.size > 10_000 || values.length >= 10) throw new HttpException('Muitas tentativas. Aguarde cinco minutos.', HttpStatus.TOO_MANY_REQUESTS);
     values.push(now);
     attempts.set(key, values);
   }
