@@ -232,7 +232,8 @@ export function TicketPanel({
       </header>
 
       {/* Body */}
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
+      {/* Scrollable region: focusable so keyboard users can scroll long histories. */}
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 focus-visible:outline-offset-[-2px] sm:p-6" tabIndex={0} role="region" aria-label="Conteúdo do chamado">
         {composer && features.notes && !closed && (
           <form
             id="note-composer"

@@ -91,7 +91,7 @@ export function TeamLoad({ dashboard }: { dashboard?: Dashboard }) {
   const max = Math.max(1, ...dashboard.workload.map(item => item.active));
   return (
     <section aria-label="Carga da equipe" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-      <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Carga da equipe</span>
+      <span className="text-xs font-semibold tracking-wide text-slate-600 uppercase">Carga da equipe</span>
       {dashboard.workload.length === 0 && <span className="text-slate-600">Nenhum chamado em andamento.</span>}
       {dashboard.workload.map(item => (
         <span key={item.technician_id} className="flex items-center gap-2">

@@ -43,7 +43,7 @@ export function LoginScreen({ notice }: { notice?: string }) {
 
       <main className="flex flex-col px-4 py-8 sm:px-10">
         <div className="flex items-center justify-between">
-          <Link href="/" className="rounded-lg lg:invisible" aria-label="Givova TI — página inicial"><Logo subtitle="Área da TI" /></Link>
+          <Link href="/" className="rounded-lg lg:invisible"><Logo subtitle="Área da TI" /><span className="sr-only"> — página inicial</span></Link>
           <Button asChild variant="ghost" size="sm"><Link href="/"><ArrowLeft /> Voltar ao site</Link></Button>
         </div>
         <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10">
@@ -85,7 +85,7 @@ export function LoginScreen({ notice }: { notice?: string }) {
               {!login.isPending && <LogIn />} Entrar
             </Button>
           </form>
-          <p className="mt-6 text-xs leading-5 text-slate-500">Esqueceu a senha? Peça a outro técnico para redefini-la pelo terminal de administração da API.</p>
+          <p className="mt-6 text-xs leading-5 text-slate-600">Esqueceu a senha? Peça a outro técnico para redefini-la pelo terminal de administração da API.</p>
         </div>
       </main>
     </div>

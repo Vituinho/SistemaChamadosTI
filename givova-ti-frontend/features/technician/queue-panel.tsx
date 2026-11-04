@@ -141,10 +141,15 @@ export function QueuePanel({
           </div>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="h-10 shrink-0" aria-label={`Filtros${activeFilters.length ? ` (${activeFilters.length} ativos)` : ""}`}>
+              <Button variant="outline" className="h-10 shrink-0">
                 <Filter />
-                <span className="hidden sm:inline">Filtros</span>
-                {activeFilters.length > 0 && <span className="rounded-full bg-brand-700 px-1.5 text-[11px] text-white">{activeFilters.length}</span>}
+                <span className="sr-only sm:not-sr-only">Filtros</span>
+                {activeFilters.length > 0 && (
+                  <span className="rounded-full bg-brand-700 px-1.5 text-[11px] text-white">
+                    {activeFilters.length}
+                    <span className="sr-only"> ativos</span>
+                  </span>
+                )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="space-y-3">

@@ -158,7 +158,7 @@ export function Workspace({ technician }: { technician: Technician }) {
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
         <a href="#fila" className="sr-only rounded-md bg-white px-3 py-2 font-semibold focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50">Pular para a fila</a>
         <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 sm:px-6">
-          <Link href="/" className="rounded-lg" aria-label="Givova TI — site dos colaboradores"><Logo subtitle="Painel da TI" /></Link>
+          <Link href="/" className="rounded-lg"><Logo subtitle="Painel da TI" /><span className="sr-only"> — site dos colaboradores</span></Link>
           <span className={cn("ml-2 hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex", dashboard.isError ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-800")} role="status">
             <span className={cn("size-1.5 rounded-full", dashboard.isError ? "bg-amber-500" : "bg-emerald-500", live && "animate-pulse")} aria-hidden="true" />
             {dashboard.isError ? "Reconectando…" : live ? "Ao vivo" : POLLING_ONLY ? "Atualiza a cada 15 s" : "Atualização automática"}
@@ -173,9 +173,10 @@ export function Workspace({ technician }: { technician: Technician }) {
             />
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
-                <Button variant="ghost" size="sm" className="h-9 gap-2 pl-1.5" aria-label={`Conta de ${technician.name}`}>
+                <Button variant="ghost" size="sm" className="h-9 gap-2 pl-1.5">
                   <Avatar name={technician.name} className="size-7 bg-brand-700 text-[11px]" />
-                  <span className="hidden max-w-36 truncate md:inline">{technician.name}</span>
+                  <span className="sr-only">Conta de </span>
+                  <span className="sr-only max-w-36 truncate md:not-sr-only">{technician.name}</span>
                   <ChevronDown className="text-slate-500" />
                 </Button>
               </DropdownMenu.Trigger>

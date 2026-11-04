@@ -47,9 +47,9 @@ export function NotificationSettings({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-9" aria-label="Configurar notificações">
+        <Button variant="ghost" size="sm" className="h-9">
           {active ? <BellRing className="text-brand-700" /> : <Bell />}
-          <span className="hidden md:inline">Notificações</span>
+          <span className="sr-only md:not-sr-only">Notificações</span>
           {push !== "on" && <span className="size-2 rounded-full bg-amber-500" aria-hidden="true" />}
         </Button>
       </PopoverTrigger>
