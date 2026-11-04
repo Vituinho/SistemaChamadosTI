@@ -1,0 +1,48 @@
+name: NestJS API + cPanel package (refactor branch)
+on:
+  push:
+    branches:
+      - refactor/nestjs-backend-cpanel-20261104
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install NestJS dependencies
+        run: npm install --prefix backend-nest --no-audit --no-fund
+      - name: Compile and test backend
+        run: npm run --prefix backend-nest check
+  cpanel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: givova-ti-frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci --prefix givova-ti-frontend
+      - name: Check Next frontend
+        run: |
+          npm run --prefix givova-ti-frontend lint
+          npm run --prefix givova-ti-frontend test
+      - name: Build static frontend and cPanel package
+        run: python3 scripts/build_cpanel.py
+      - name: Check archive integrity
+        run: unzip -t dist/cpanel-givova-chamados.zip
+      - name: Upload cPanel ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpanel-givova-chamados
+          path: dist/cpanel-givova-chamados.zip
+          retention-days: 30
+          if-no-files-found: error
