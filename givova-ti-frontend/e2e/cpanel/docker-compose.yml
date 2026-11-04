@@ -1,0 +1,48 @@
+# Local "cPanel" validation stack (Apache 2.4 + PHP 8.3 + the real cpanel.zip).
+# Prepared by e2e/cpanel/prepare.mjs; never points to production.
+name: givova-cpanel-e2e
+services:
+  tls:
+    image: node:22-bookworm-slim
+    command: ["node", "/app/tls-proxy.mjs"]
+    volumes:
+      - ./tls-proxy.mjs:/app/tls-proxy.mjs:ro
+      - ../.work/certs:/certs:ro
+    environment:
+      NEST_UPSTREAM: ${NEST_UPSTREAM:-http://host.docker.internal:8001}
+      LEGACY_UPSTREAM: ${LEGACY_UPSTREAM:-http://host.docker.internal:8002}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks:
+      e2e:
+        aliases: [givova-e2e-nest.onrender.com, givova-e2e-legacy.onrender.com]
+  apache:
+    image: php:8.3-apache
+    depends_on: [tls]
+    command:
+      - sh
+      - -c
+      - >-
+        cp /certs/ca.crt /usr/local/share/ca-certificates/givova-e2e.crt && update-ca-certificates >/dev/null &&
+        a2enmod -q rewrite headers ssl deflate >/dev/null && apache2-foreground
+    volumes:
+      - ../.work/site-nest:/var/www/nest:ro
+      - ../.work/site-legacy:/var/www/legacy:ro
+      - ../.work/certs:/certs:ro
+      - ./apache-sites.conf:/etc/apache2/sites-enabled/000-default.conf:ro
+      - ./php-cpanel.ini:/usr/local/etc/php/conf.d/zz-cpanel.ini:ro
+    ports: ["8443:443", "8080:80"]
+    networks:
+      e2e:
+        aliases: [suporte-nest.givova.test, suporte-legacy.givova.test]
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    profiles: [test]
+    working_dir: /work
+    volumes:
+      - ../..:/work
+    environment:
+      CI: "1"
+      E2E_TARGETS: ${E2E_TARGETS:-nest,legacy}
+    networks: [e2e]
+networks:
+  e2e: {}

@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated: E2E work dirs, reports and the extracted cPanel package.
+    "e2e/.work/**",
+    "e2e/.auth/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 
